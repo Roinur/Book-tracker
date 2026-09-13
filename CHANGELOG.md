@@ -3,7 +3,7 @@
 ## 1.0
 
 - Continue reading follows the most recent session across the full library.
-- Swipe right starts a reading session; swipe left pins or unpins.
+- Swipe left starts a reading session; swipe right pins or unpins.
 - ISBN camera preview uses a square center crop without side bars.
 - Replaced documentation screenshots with user-provided captures.
 

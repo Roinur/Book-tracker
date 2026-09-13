@@ -272,10 +272,10 @@ internal fun EntrySwipeDismissContainer(
                 return@rememberSwipeToDismissBoxState false
             }
             when (target) {
-                SwipeToDismissBoxValue.StartToEnd -> {
+                SwipeToDismissBoxValue.EndToStart -> {
                     onToggleRead(code)
                 }
-                SwipeToDismissBoxValue.EndToStart -> {
+                SwipeToDismissBoxValue.StartToEnd -> {
                     onTogglePinned(code)
                 }
                 SwipeToDismissBoxValue.Settled -> Unit
@@ -313,8 +313,8 @@ internal fun EntrySwipeDismissContainer(
     val visualPinnedState = if (swipeCommitTracker.gestureActive && swipeSnapshotCaptured) swipeSnapshotPinned else isPinned
     val visualReadState = if (swipeCommitTracker.gestureActive && swipeSnapshotCaptured) swipeSnapshotRead else isRead
     val backgroundSpec = when (visualDirection) {
-        SwipeToDismissBoxValue.StartToEnd -> SwipeBackgroundSpec("Read", "▶", READ_STATE_COLOR)
-        SwipeToDismissBoxValue.EndToStart -> SwipeBackgroundSpec(
+        SwipeToDismissBoxValue.EndToStart -> SwipeBackgroundSpec("Read", "▶", READ_STATE_COLOR)
+        SwipeToDismissBoxValue.StartToEnd -> SwipeBackgroundSpec(
             if (visualPinnedState) "Unpin" else "Pin", "\uD83D\uDCCC",
             if (visualPinnedState) UNREAD_STATE_COLOR else READ_STATE_COLOR
         )

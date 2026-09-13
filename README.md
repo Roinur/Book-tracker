@@ -24,7 +24,7 @@ An Android reading journal for books, reading sessions, notes and personal goals
 - Library list and gallery, collections, pinned books, search and manual reading status.
 - Tap an author in Book details to search your entire library for that author.
 - Reading timer with pause/resume, manual sessions and durations longer than 24 hours. Continue reading follows your latest session, independent of library filters.
-- Swipe right to start reading; swipe left to pin or unpin.
+- Swipe left to start reading; swipe right to pin or unpin.
 - Automatically saved reading notes, global note search and copying notes in date order.
 - Daily and monthly time/page goals, yearly book goals, heatmaps and reading trends.
 - Historical sessions can count toward lifetime totals while being excluded from dated statistics.
@@ -33,11 +33,11 @@ An Android reading journal for books, reading sessions, notes and personal goals
 
 ## Install and update
 
-Download the signed APK from [GitHub Releases](https://github.com/Roinur/Book-Tracker/releases/latest). The repository and releases are private. Android 8.0 (API 26) or later is required; the release targets ARM64 devices.
+Download the signed APK from [GitHub Releases](https://github.com/Roinur/Book-Tracker/releases/latest). Android 8.0 (API 26) or later is required; the release targets ARM64 devices.
 
 Install an update over the existing app. **Do not uninstall or clear storage to update.** Android requires the same application ID and signing key. Export a backup in Settings and keep a copy outside the phone.
 
-Version 1.0 uses Android version code 34 so it can update the earlier development releases. The application ID remains `com.roinur.booktracker`.
+Version 1.0 uses Android version code 35 so it can update the earlier development releases. The application ID remains `com.roinur.booktracker`.
 
 ## Build
 

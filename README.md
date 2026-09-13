@@ -75,6 +75,6 @@ See [data compatibility](DATA_COMPATIBILITY.md) before changing storage or impor
 
 ## Credits and license
 
-Book Tracker evolved from Roinur's Sauce Tracker, retaining shared UI and reading-trend work. The unrelated browser, download and desktop-bridge features have been removed.
+Book Tracker grew out of Roinur's Sauce Tracker.
 
 No license is granted for Book Tracker source code. Copyright (c) 2026 Roinur. All rights reserved. Third-party components retain their own licenses; see [third-party notices](THIRD_PARTY_NOTICES.md). Book cover artwork remains the property of its respective rights holders and is not included as sample library data.

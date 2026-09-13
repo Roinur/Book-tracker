@@ -1,6 +1,6 @@
 # Third-party notices
 
-Book Tracker evolved from Roinur's Sauce Tracker UI and trend implementation. This attribution is retained even though unrelated Sauce Tracker features are not shipped.
+Book Tracker grew out of Roinur's Sauce Tracker.
 
 ## Runtime components
 

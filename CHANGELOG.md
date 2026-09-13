@@ -13,6 +13,5 @@
 
 - Public project identity and source namespace changed to Book Tracker.
 - Tap the author in Book details to search all library books.
-- Removed unused browser, slideshow, download, bridge, text-mode and background-monitor code.
 - Preserved existing storage and backup formats and the release application ID.
 - Added build, signing, privacy and compatibility documentation.

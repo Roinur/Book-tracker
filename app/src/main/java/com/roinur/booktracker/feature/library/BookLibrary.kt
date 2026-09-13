@@ -68,7 +68,7 @@ internal fun BookLibraryHeader(
     onContinue: (Int) -> Unit,
     onAdd: () -> Unit
 ) {
-    val highlightedBook = activeBook ?: vm.books.firstOrNull { it.status == BookStatus.READING || it.status == BookStatus.PAUSED }
+    val highlightedBook = mostRecentlyReadBook(vm.statsBooks, vm.allBookSessions, vm.activeBookId)
     var showLayoutDialog by rememberSaveable { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         highlightedBook?.let { book ->

@@ -273,10 +273,10 @@ internal fun EntrySwipeDismissContainer(
             }
             when (target) {
                 SwipeToDismissBoxValue.StartToEnd -> {
-                    onTogglePinned(code)
+                    onToggleRead(code)
                 }
                 SwipeToDismissBoxValue.EndToStart -> {
-                    onToggleRead(code)
+                    onTogglePinned(code)
                 }
                 SwipeToDismissBoxValue.Settled -> Unit
             }
@@ -313,22 +313,11 @@ internal fun EntrySwipeDismissContainer(
     val visualPinnedState = if (swipeCommitTracker.gestureActive && swipeSnapshotCaptured) swipeSnapshotPinned else isPinned
     val visualReadState = if (swipeCommitTracker.gestureActive && swipeSnapshotCaptured) swipeSnapshotRead else isRead
     val backgroundSpec = when (visualDirection) {
-        SwipeToDismissBoxValue.StartToEnd -> {
-            val action = if (visualPinnedState) "Unpin" else "Pin"
-            SwipeBackgroundSpec(
-                label = action,
-                glyph = "\uD83D\uDCCC",
-                tint = if (visualPinnedState) UNREAD_STATE_COLOR else READ_STATE_COLOR
-            )
-        }
-        SwipeToDismissBoxValue.EndToStart -> {
-            val action = if (visualReadState) "Unread" else "Read"
-            SwipeBackgroundSpec(
-                label = action,
-                glyph = if (visualReadState) "○" else "✓",
-                tint = if (visualReadState) UNREAD_STATE_COLOR else READ_STATE_COLOR
-            )
-        }
+        SwipeToDismissBoxValue.StartToEnd -> SwipeBackgroundSpec("Read", "▶", READ_STATE_COLOR)
+        SwipeToDismissBoxValue.EndToStart -> SwipeBackgroundSpec(
+            if (visualPinnedState) "Unpin" else "Pin", "\uD83D\uDCCC",
+            if (visualPinnedState) UNREAD_STATE_COLOR else READ_STATE_COLOR
+        )
         SwipeToDismissBoxValue.Settled -> SwipeBackgroundSpec("", "", MaterialTheme.colorScheme.onSurfaceVariant)
     }
     val backgroundAlpha by androidx.compose.animation.core.animateFloatAsState(

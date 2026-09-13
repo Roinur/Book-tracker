@@ -86,7 +86,6 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
     var coverTargetName by rememberSaveable { mutableStateOf<String?>(null) }
     var coverSearchTargetName by rememberSaveable { mutableStateOf<String?>(null) }
     var showCoverSearch by rememberSaveable { mutableStateOf(false) }
-    var pendingReadBookId by rememberSaveable { mutableStateOf<Int?>(null) }
     var showNotesDialog by rememberSaveable { mutableStateOf(false) }
     var showSessionsDialog by rememberSaveable { mutableStateOf(false) }
     var showGlobalSessionsDialog by rememberSaveable { mutableStateOf(false) }
@@ -106,8 +105,8 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
     val coverSearchTarget = coverSearchTargetName?.let { runCatching { BookCoverTarget.valueOf(it) }.getOrNull() }
     val activeBook = vm.statsBooks.firstOrNull { it.id == vm.activeBookId }
     val visibleLibraryBooks = vm.books.filter { vm.libraryFilter.matches(it, vm.activeBookId) }
-    val fallbackBook = activeBook ?: vm.books.firstOrNull { it.status == BookStatus.READING || it.status == BookStatus.PAUSED }
-    val selectedBook = vm.books.firstOrNull { it.id == vm.selectedBookId } ?: fallbackBook
+    val fallbackBook = mostRecentlyReadBook(vm.statsBooks, vm.allBookSessions, vm.activeBookId)
+    val selectedBook = vm.statsBooks.firstOrNull { it.id == vm.selectedBookId } ?: fallbackBook
     val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
             scannerOpen = true
@@ -508,7 +507,7 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                                                     screenModeName = BookScreenMode.DETAIL.name
                                                 },
                                                 onPin = { vm.toggleBookPinned(book.id) },
-                                                onReadGesture = { pendingReadBookId = book.id },
+                                                onReadGesture = { openReading(book.id) },
                                                 onRatingPreview = { rating ->
                                                     holdPopup = BookRatingHoldState(book.id, rating)
                                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -537,7 +536,7 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                                             screenModeName = BookScreenMode.DETAIL.name
                                         },
                                         onTogglePinned = vm::toggleBookPinned,
-                                        onToggleFinished = { pendingReadBookId = it },
+                                        onToggleFinished = { openReading(it) },
                                         onRatingPreview = { rating ->
                                             holdPopup = BookRatingHoldState(book.id, rating)
                                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -637,27 +636,6 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                 showCoverSearch = false
                 coverTargetName = null
                 coverSearchTargetName = null
-            }
-        )
-    }
-
-    pendingReadBookId?.let { bookId ->
-        AlertDialog(
-            shape = RoundedCornerShape(8.dp),
-            containerColor = MaterialTheme.colorScheme.surface,
-            tonalElevation = 0.dp,
-            modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f), RoundedCornerShape(8.dp)),
-            onDismissRequest = { pendingReadBookId = null },
-            title = { Text("Start reading now?") },
-            text = { Text("Open the reading timer for this book.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    pendingReadBookId = null
-                    openReading(bookId)
-                }) { Text("Yes") }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingReadBookId = null }) { Text("Cancel") }
             }
         )
     }

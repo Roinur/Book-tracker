@@ -31,7 +31,7 @@ android {
         applicationId = "com.roinur.booktracker"
         minSdk = 26
         targetSdk = 34
-        versionCode = 33
+        versionCode = 34
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {

@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -75,10 +77,10 @@ internal fun BuiltInBookScannerDialog(
             contentAlignment = Alignment.Center
         ) {
             val dialogMaxHeight = maxHeight * 0.84f
-            val previewHeight = (dialogMaxHeight - 112.dp).coerceIn(220.dp, 360.dp)
+            val previewSize = minOf(maxWidth - 28.dp, (dialogMaxHeight - 112.dp).coerceAtLeast(100.dp))
             Card(
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .width(previewSize + 28.dp)
                     .heightIn(max = dialogMaxHeight),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                 shape = RoundedCornerShape(8.dp),
@@ -100,12 +102,12 @@ internal fun BuiltInBookScannerDialog(
                     }
                     AndroidView(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(previewHeight)
+                            .size(previewSize)
                             .clip(RoundedCornerShape(8.dp)),
                         factory = { viewContext ->
                             val previewView = PreviewView(viewContext).apply {
-                                scaleType = PreviewView.ScaleType.FIT_CENTER
+                                scaleType = PreviewView.ScaleType.FILL_CENTER
+                                implementationMode = PreviewView.ImplementationMode.COMPATIBLE
                             }
                             val providerFuture = ProcessCameraProvider.getInstance(viewContext)
                             providerFuture.addListener(

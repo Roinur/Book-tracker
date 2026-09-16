@@ -31,6 +31,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -299,6 +301,12 @@ internal fun FinishReadingDialog(
     onDiscard: () -> Unit,
     onSave: () -> Unit
 ) {
+    var calculatorExpanded by rememberSaveable(book.id) { mutableStateOf(false) }
+    var calculatorStart by rememberSaveable(book.id) { mutableStateOf("") }
+    var calculatorEnd by rememberSaveable(book.id) { mutableStateOf("") }
+    fun updateCalculation(start: String, end: String) {
+        calculatedBookPage(book.currentPage, start, end)?.let { onPageChange(it.toString()) }
+    }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(
@@ -321,7 +329,6 @@ internal fun FinishReadingDialog(
                     Text("Finish reading", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
                 }
                 Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Enter the page you got to", style = MaterialTheme.typography.titleMedium)
                     Text(book.title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     OutlinedTextField(
                         value = pageDraft,
@@ -331,6 +338,34 @@ internal fun FinishReadingDialog(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth()
                     )
+                    Column(Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))) {
+                        BookDisclosureHeader("Page calculator", R.drawable.ic_calculator_24, calculatorExpanded) { calculatorExpanded = !calculatorExpanded }
+                        if (calculatorExpanded) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            OutlinedTextField(
+                                value = calculatorStart,
+                                onValueChange = { calculatorStart = it; updateCalculation(it, calculatorEnd) },
+                                label = { Text("Start page") }, singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f)
+                            )
+                            OutlinedTextField(
+                                value = calculatorEnd,
+                                onValueChange = { calculatorEnd = it; updateCalculation(calculatorStart, it) },
+                                label = { Text("End page") }, singleLine = true,
+                                isError = calculatorStart.isNotBlank() && calculatorEnd.isNotBlank() && calculatedBookPage(book.currentPage, calculatorStart, calculatorEnd) == null,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f)
+                            )
+                        }
+                        val calculated = calculatedBookPage(book.currentPage, calculatorStart, calculatorEnd)
+                        if (calculated != null) Text("${calculated - book.currentPage} pages read", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
                     Button(onClick = onSave, modifier = Modifier.fillMaxWidth().height(52.dp)) {
                         Text("Save")
                     }

@@ -1,11 +1,9 @@
 package com.roinur.booktracker
 
-import androidx.compose.material3.Text
+import com.roinur.booktracker.BookFitText as Text
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -34,6 +32,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -130,9 +131,20 @@ internal fun BookStatsContent(
     val bestMinuteDay = rangeMinutePoints.maxOfOrNull { it.pagesRead }?.coerceAtLeast(0) ?: 0
 
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        val chartHeight = (maxHeight * 0.19f).coerceIn(132.dp, 198.dp)
+        val chartHeight = ((maxHeight * 0.19f).coerceIn(132.dp, 198.dp) - 20.dp)
         Column(
-            modifier = Modifier.fillMaxSize().padding(bottom = 110.dp).verticalScroll(rememberScrollState()),
+            modifier = Modifier.fillMaxSize().padding(bottom = 110.dp).layout { measurable, constraints ->
+                // Measure all sections before fitting them into the space above the actions.
+                val content = measurable.measure(constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity))
+                val scale = minOf(1f, constraints.maxHeight.toFloat() / content.height.coerceAtLeast(1))
+                layout(constraints.maxWidth, constraints.maxHeight) {
+                    content.placeWithLayer(((constraints.maxWidth - content.width * scale) / 2).roundToInt(), 0) {
+                        scaleX = scale
+                        scaleY = scale
+                        transformOrigin = TransformOrigin(0f, 0f)
+                    }
+                }
+            },
             verticalArrangement = Arrangement.spacedBy(9.dp)
         ) {
         BookPanel(contentPadding = PaddingValues(horizontal = 10.dp, vertical = 11.dp)) {
@@ -295,7 +307,8 @@ internal fun BookStatsContent(
                 )
             }
         }
-        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        // Reserve the same area for every range so fitting never changes the UI scale.
+        Column(modifier = Modifier.height(139.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth().height(40.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,

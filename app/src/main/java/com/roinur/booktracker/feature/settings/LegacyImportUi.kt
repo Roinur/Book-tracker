@@ -1,6 +1,15 @@
 package com.roinur.booktracker
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.res.painterResource
+import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -14,6 +23,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import org.json.JSONObject
@@ -34,7 +47,7 @@ internal fun LegacyImportDialog(plan: LegacyImportPreview?, busy: Boolean, onCon
                 Text("Unknown session end times stay unknown. Exact milliseconds, titles, page labels, goals and other fields remain in the legacy import archive and exported backups.")
             }
         },
-        confirmButton = { TextButton(onClick = onConfirm, enabled = !busy) { Text(if (busy) "Importing…" else "Add and preserve all data") } },
+        confirmButton = { TextButton(onClick = onConfirm, enabled = !busy) { Text(if (busy) "Importingâ€¦" else "Add and preserve all data") } },
         dismissButton = { TextButton(onClick = onCancel, enabled = !busy) { Text("Cancel") } }
     )
 }
@@ -47,15 +60,15 @@ internal fun TrackerBackupImportDialog(plan: TrackerBackupPreview?, busy: Boolea
         title = { Text("Restore Book Tracker backup") },
         text = {
             Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("${plan.bookCount} books · ${plan.noteCount} notes · ${plan.sessionCount} sessions", style = MaterialTheme.typography.titleSmall)
-                Text("${plan.goalCount} reading goal record · ${plan.legacyArchiveCount} preserved legacy import archive")
+                Text("${plan.bookCount} books Â· ${plan.noteCount} notes Â· ${plan.sessionCount} sessions", style = MaterialTheme.typography.titleSmall)
+                Text("${plan.goalCount} reading goal record Â· ${plan.legacyArchiveCount} preserved legacy import archive")
                 Text(if (plan.integrityProtected) "Integrity checksum verified." else "Legacy backup: structure verified, but this older format has no whole-backup checksum.")
                 if (plan.exportedAt.isNotBlank()) Text("Exported ${plan.exportedAt}", style = MaterialTheme.typography.bodySmall)
                 Text("Safe restore never deletes or replaces your library. Current V3 backups can only be restored into an empty library, which prevents accidental duplicate imports.")
                 Text("Content ID ${plan.contentSha256.take(12)}", style = MaterialTheme.typography.bodySmall)
             }
         },
-        confirmButton = { TextButton(onClick = onConfirm, enabled = !busy) { Text(if (busy) "Restoring…" else "Restore verified backup") } },
+        confirmButton = { TextButton(onClick = onConfirm, enabled = !busy) { Text(if (busy) "Restoringâ€¦" else "Restore verified backup") } },
         dismissButton = { TextButton(onClick = onCancel, enabled = !busy) { Text("Cancel") } }
     )
 }
@@ -63,16 +76,30 @@ internal fun TrackerBackupImportDialog(plan: TrackerBackupPreview?, busy: Boolea
 @Composable
 internal fun LegacyArchivePanel(archives: List<LegacyArchiveInfo>, onExport: (String) -> Unit) {
     if (archives.isEmpty()) return
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Preserved import data", style = MaterialTheme.typography.titleMedium)
-            Text("These originals include every field and content type, even when there is no matching screen in Book Tracker. They are also included in Export Data backups.")
-            archives.forEach { archive ->
-                val counts = JSONObject(archive.counts)
-                Text("${counts.optInt("BookModel")} books · ${counts.optInt("ThoughtModel")} thoughts · ${counts.optInt("ReadingSessionModel")} sessions")
-                Text(counts.keys().asSequence().sorted().joinToString(" · ") { "${it.removeSuffix("Model")}: ${counts.getInt(it)}" }, style = MaterialTheme.typography.bodySmall)
-                Text("Import ${bookLocalDate(archive.importedAt) ?: archive.importedAt} · ${archive.hash.take(12)}", style = MaterialTheme.typography.bodySmall)
-                OutlinedButton(onClick = { onExport(archive.hash) }) { Text("Export original file") }
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    BookPanel(contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+        BookDisclosureHeader("Preserved import data", null, expanded,
+            "${archives.size} ${if (archives.size == 1) "import" else "imports"}") { expanded = !expanded }
+        if (expanded) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Column(Modifier.padding(horizontal = 16.dp)) {
+                archives.forEachIndexed { index, archive ->
+                    if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    val counts = JSONObject(archive.counts)
+                    Column(Modifier.fillMaxWidth().padding(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(bookLocalDate(archive.importedAt)?.format(java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy")) ?: archive.importedAt,
+                            style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+                        listOf("Books" to counts.optInt("BookModel"), "Sessions" to counts.optInt("ReadingSessionModel"), "Notes" to counts.optInt("ThoughtModel")).forEach { (label, count) ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(count.toString(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                            }
+                        }
+                        OutlinedButton(onClick = { onExport(archive.hash) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp)) {
+                            Text("Export original")
+                        }
+                    }
+                }
             }
         }
     }

@@ -17,9 +17,12 @@ internal class BookLookupClient {
         .build()
 
     fun lookupByIsbn(isbn: String): BookSeed? {
-        runCatching { lookupOpenLibrary(isbn) }.getOrNull()?.let { return it }
-        runCatching { lookupGoogleBooks(isbn) }.getOrNull()?.let { return it }
-        return null
+        val sources = listOfNotNull(
+            runCatching { lookupOpenLibrary(isbn) }.getOrNull(),
+            runCatching { lookupGoogleBooks(isbn) }.getOrNull(),
+            runCatching { lookupLibris(isbn) }.getOrNull()
+        )
+        return mergeBookMetadata(isbn, sources)
     }
 
     fun lookupCover(isbn: String?, title: String, authors: String): String? {
@@ -39,11 +42,30 @@ internal class BookLookupClient {
     }
 
     fun searchGoogleImages(query: String): List<CoverImageResult> {
-        val googleBooks = runCatching { googleBooksCoverFallback(query) }.getOrDefault(emptyList())
-        val openLibrary = runCatching { openLibraryCoverResults(query) }.getOrDefault(emptyList())
-        return (googleBooks + openLibrary)
-            .distinctBy { it.imageUrl }
-            .take(18)
+        val isbn = query.trim().removePrefix("ISBN:").removePrefix("isbn:").filterNot { it.isWhitespace() || it == '-' }
+            .takeIf { it.matches(Regex("(?:[0-9]{13}|[0-9]{9}[0-9Xx])")) }
+        val search = isbn?.let { "isbn:$it" } ?: query
+        val googleBooks = runCatching { googleBooksCoverFallback(search) }.getOrDefault(emptyList())
+        val openLibrary = runCatching { openLibraryCoverResults(search) }.getOrDefault(emptyList())
+        val exact = if (isbn == null) emptyList() else runCatching {
+            lookupByIsbn(isbn)?.let { book ->
+                if (book.coverUrl.isNotBlank()) listOf(CoverImageResult(book.title, book.coverUrl))
+                else if (googleBooks.isEmpty() && openLibrary.isEmpty())
+                    googleBooksCoverFallback(book.title) + openLibraryCoverResults(book.title)
+                else emptyList()
+            }.orEmpty()
+        }.getOrDefault(emptyList())
+        return (exact + googleBooks + openLibrary).distinctBy { it.imageUrl }.take(18)
+    }
+
+    private fun lookupLibris(isbn: String): BookSeed? {
+        val encoded = URLEncoder.encode("isbn:$isbn", "UTF-8")
+        val request = Request.Builder().url("https://libris.kb.se/api/xsearch?query=$encoded&format=marcxml&n=5")
+            .header("User-Agent", "BookTracker-Android/1.0").build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return null
+            return parseLibrisMetadata(response.body?.string().orEmpty(), isbn)
+        }
     }
 
     private fun googleBooksCoverFallback(query: String): List<CoverImageResult> {
@@ -154,7 +176,12 @@ internal class BookLookupClient {
             if (!response.isSuccessful) return null
             val root = JSONObject(response.body?.string().orEmpty())
             val items = root.optJSONArray("items") ?: return null
-            val item = items.optJSONObject(0) ?: return null
+            val item = (0 until items.length()).mapNotNull { items.optJSONObject(it) }.firstOrNull { candidate ->
+                if (isbn.isBlank()) true else {
+                    val ids = candidate.optJSONObject("volumeInfo")?.optJSONArray("industryIdentifiers")
+                    ids != null && (0 until ids.length()).any { metadataIsbn(ids.optJSONObject(it)?.optString("identifier").orEmpty()) == metadataIsbn(isbn) }
+                }
+            } ?: return null
             val volume = item.optJSONObject("volumeInfo") ?: return null
             val authorsJson = volume.optJSONArray("authors")
             val authors = if (authorsJson == null) {

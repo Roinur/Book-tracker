@@ -67,7 +67,7 @@ internal fun BookTrackerApp(vm: BookTrackerViewModel) {
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background
         ) {
-            BookTrackerScreen(vm)
+            BookAdaptiveViewport { BookTrackerScreen(vm) }
         }
     }
 }

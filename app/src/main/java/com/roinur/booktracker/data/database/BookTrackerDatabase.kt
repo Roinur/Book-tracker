@@ -1,4 +1,6 @@
-package com.roinur.booktracker
+package com.roinur.booktracker.data.database
+
+import com.roinur.booktracker.*
 
 import android.content.ContentValues
 import android.content.Context
@@ -8,8 +10,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
-import org.json.JSONArray
-import org.json.JSONObject
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -235,54 +235,6 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
             .take(24)
     }
 
-    fun exportBackupJson(): JSONObject {
-        val snapshot = readableDatabase
-        snapshot.beginTransactionNonExclusive()
-        try {
-            val backup = JSONObject().apply {
-                put("format", LegacyMigration.BACKUP_FORMAT)
-                put("bookly_sources", LegacyMigration.exportArchives(snapshot))
-                put("bookly_links", exportTable("bookly_links"))
-                put("exported_at", Instant.now().toString())
-                put("books", exportTable("books"))
-                put("reading_sessions", exportTable("reading_sessions"))
-                put("reading_notes", exportTable("reading_notes"))
-                put("reading_goals", exportTable("reading_goals"))
-            }
-            snapshot.setTransactionSuccessful()
-            return LegacyMigration.sealTrackerBackup(backup)
-        } finally {
-            snapshot.endTransaction()
-        }
-    }
-
-    fun importBackupJson(root: JSONObject, source: ByteArray = root.toString().toByteArray(Charsets.UTF_8)): String =
-        LegacyMigration.importTrackerBackup(writableDatabase, root, source)
-
-    fun importLegacy(plan: LegacyImportPreview): String = LegacyMigration.importLegacy(writableDatabase, plan)
-    fun legacyArchives(): List<LegacyArchiveInfo> = LegacyMigration.archives(readableDatabase)
-    fun legacySource(hash: String): ByteArray = LegacyMigration.source(readableDatabase, hash)
-
-    private fun exportTable(table: String): JSONArray {
-        val rows = JSONArray()
-        readableDatabase.rawQuery("SELECT * FROM $table", emptyArray()).use { cursor ->
-            while (cursor.moveToNext()) {
-                val row = JSONObject()
-                cursor.columnNames.forEachIndexed { index, name ->
-                    when (cursor.getType(index)) {
-                        android.database.Cursor.FIELD_TYPE_INTEGER -> row.put(name, cursor.getLong(index))
-                        android.database.Cursor.FIELD_TYPE_FLOAT -> row.put(name, cursor.getDouble(index))
-                        android.database.Cursor.FIELD_TYPE_STRING -> row.put(name, cursor.getString(index).orEmpty())
-                        android.database.Cursor.FIELD_TYPE_NULL -> row.put(name, JSONObject.NULL)
-                        else -> row.put(name, cursor.getString(index).orEmpty())
-                    }
-                }
-                rows.put(row)
-            }
-        }
-        return rows
-    }
-
     fun loadReadingGoals(): BookReadingGoals = readableDatabase.rawQuery(
         "SELECT daily_minutes, daily_pages, yearly_books, monthly_minutes, monthly_pages, daily_metric, monthly_metric FROM reading_goals WHERE id = 1",
         emptyArray()
@@ -313,56 +265,6 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
         check(writableDatabase.insertWithOnConflict("reading_goals", null, values, SQLiteDatabase.CONFLICT_REPLACE) != -1L) {
             "Could not save reading goals."
         }
-    }
-
-    fun loadStats(): BookStats {
-        val allBooks = listBooks("", BookSortField.ADDED, true)
-        val sessions = listAllSessions().map { it.session }
-        val points = bookDailyActivity(sessions, pages = false)
-        val pagePoints = bookDailyActivity(sessions, pages = true)
-        val sessionCount = readableDatabase.rawQuery(
-            "SELECT COUNT(*) AS count FROM reading_sessions",
-            emptyArray()
-        ).use { cursor ->
-            if (cursor.moveToFirst()) cursor.getInt(cursor.getColumnIndexOrThrow("count")).coerceAtLeast(0) else 0
-        }
-        val noteCounts = mutableMapOf<BookNoteKind, Int>()
-        readableDatabase.rawQuery(
-            """
-            SELECT COALESCE(kind, ?) AS kind, COUNT(*) AS count
-            FROM reading_notes
-            GROUP BY kind
-            """.trimIndent(),
-            arrayOf(BookNoteKind.NOTE.name)
-        ).use { cursor ->
-            while (cursor.moveToNext()) {
-                val kind = BookNoteKind.fromStorage(cursor.getString(cursor.getColumnIndexOrThrow("kind")))
-                noteCounts[kind] = cursor.getInt(cursor.getColumnIndexOrThrow("count")).coerceAtLeast(0)
-            }
-        }
-        val rated = allBooks.filter { it.rating > 0 }
-        return BookStats(
-            totalBooks = allBooks.size,
-            wishlistBooks = allBooks.count { it.status == BookStatus.WISHLIST },
-            readingBooks = allBooks.count { it.status == BookStatus.READING || it.status == BookStatus.PAUSED },
-            finishedBooks = allBooks.count { it.status == BookStatus.FINISHED },
-            finishedThisYear = allBooks.count {
-                bookCompletionYear(it.finishedAt) == LocalDate.now().year
-            },
-            totalPages = allBooks.sumOf { it.pageCount.coerceAtLeast(0) },
-            pagesRead = allBooks.sumOf { book ->
-                book.currentPage.coerceAtLeast(0)
-            },
-            readingSeconds = LegacyMigration.totalReadingSeconds(readableDatabase),
-            averageRating = if (rated.isEmpty()) 0f else rated.sumOf { it.rating }.toFloat() / rated.size.toFloat(),
-            readingSessionCount = sessionCount,
-            noteCount = noteCounts[BookNoteKind.NOTE] ?: 0,
-            quoteCount = noteCounts[BookNoteKind.QUOTE] ?: 0,
-            thoughtCount = noteCounts[BookNoteKind.THOUGHT] ?: 0,
-            wordCount = noteCounts[BookNoteKind.WORD] ?: 0,
-            dailyActivity = points,
-            dailyPageActivity = pagePoints
-        )
     }
 
     fun markStarted(bookId: Int, startedIso: String) {

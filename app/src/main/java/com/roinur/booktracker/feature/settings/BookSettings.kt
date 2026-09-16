@@ -1,5 +1,10 @@
 package com.roinur.booktracker
 
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material3.Text
 
 import androidx.compose.foundation.layout.Arrangement
@@ -22,8 +27,11 @@ internal fun BookSettingsContent(
     onImport: () -> Unit,
     onExport: () -> Unit,
     onPickBackupFolder: () -> Unit,
+    onCheckBackup: () -> Unit,
+    onExportRecovery: (String) -> Unit,
     onExportLegacy: (String) -> Unit
 ) {
+    var recoveryExpanded by rememberSaveable { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         BookSettingsActionPanel(
             vm = vm,
@@ -31,6 +39,25 @@ internal fun BookSettingsContent(
             onExport = onExport,
             onPickBackupFolder = onPickBackupFolder
         )
+        OutlinedButton(onClick = onCheckBackup, enabled = !vm.importBusy, modifier = Modifier.fillMaxWidth()) { Text("Check backup") }
+        BookPanel(contentPadding = PaddingValues(0.dp)) {
+            BookDisclosureHeader("Recovery copies", null, recoveryExpanded,
+                "${vm.recoveryCopies.size} ${if (vm.recoveryCopies.size == 1) "copy" else "copies"}") { recoveryExpanded = !recoveryExpanded }
+            if (recoveryExpanded) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("The latest five copies before imports, book edits, session edits and deletions. Stored on this phone.", style = MaterialTheme.typography.bodySmall)
+            if (vm.recoveryCopies.isEmpty()) Text("No recovery copies yet.", style = MaterialTheme.typography.bodySmall)
+            vm.recoveryCopies.forEach { copy ->
+                val stamp = java.time.Instant.ofEpochMilli(copy.createdAt).atZone(java.time.ZoneId.systemDefault())
+                    .format(java.time.format.DateTimeFormatter.ofPattern("MMM d, HH:mm"))
+                OutlinedButton(onClick = { onExportRecovery(copy.name) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("$stamp · ${copy.reason}")
+                }
+            }
+        }
+                }
+            }
         LegacyArchivePanel(vm.preservedLegacyArchives, onExportLegacy)
         BookSectionCard {
             Text("Status", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)

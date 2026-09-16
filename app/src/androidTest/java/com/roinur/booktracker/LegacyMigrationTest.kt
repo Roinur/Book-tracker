@@ -1,5 +1,10 @@
 package com.roinur.booktracker
 
+import com.roinur.booktracker.data.database.BookTrackerDatabase
+
+import com.roinur.booktracker.data.backup.BookBackupService
+import com.roinur.booktracker.data.stats.BookStatsRepository
+
 import android.content.ContentValues
 import android.database.DatabaseUtils
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -41,10 +46,11 @@ class LegacyMigrationTest {
         val goals = BookReadingGoals(30, 20, 12, 600, 500, BookGoalMetric.PAGES, BookGoalMetric.TIME)
         db.saveReadingGoals(goals)
         assertEquals(goals, db.loadReadingGoals())
-        val backup = db.exportBackupJson()
+        val backup = BookBackupService(db).exportBackupJson()
         database { restored ->
-            restored.importBackupJson(backup)
+            BookBackupService(restored).importBackupJson(backup)
             assertEquals(goals, restored.loadReadingGoals())
+            assertEquals(BookStatsRepository(db).loadStats(), BookStatsRepository(restored).loadStats())
             assertEquals(BookStatus.PAUSED, book(restored, id)!!.status)
             assertEquals(3, book(restored, id)!!.currentPage)
         }
@@ -60,7 +66,7 @@ class LegacyMigrationTest {
         db.updateReadingNote(noteId, "2026-09-01T12:00:00Z", 3, text)
         assertEquals(text, db.readableDatabase.rawQuery("SELECT note FROM reading_notes WHERE id = ?", arrayOf(noteId.toString())).use { it.moveToFirst(); it.getString(0) })
         database { restored ->
-            restored.importBackupJson(db.exportBackupJson())
+            BookBackupService(restored).importBackupJson(BookBackupService(db).exportBackupJson())
             assertEquals(text, restored.readableDatabase.rawQuery("SELECT note FROM reading_notes WHERE id = ?", arrayOf(noteId.toString())).use { it.moveToFirst(); it.getString(0) })
         }
     }
@@ -92,25 +98,25 @@ class LegacyMigrationTest {
     @Test fun futureFieldsUnknownTypesDeletedRowsAndWhitespaceArePreserved() = database { db ->
         val bytes=("\uFEFF"+small().toString(2)+"\n").toByteArray(Charsets.UTF_8)
         val plan=LegacyMigration.preview(bytes)
-        db.importLegacy(plan)
-        assertArrayEquals(bytes,db.legacySource(plan.hash))
+        BookBackupService(db).importLegacy(plan)
+        assertArrayEquals(bytes,BookBackupService(db).legacySource(plan.hash))
         assertEquals(" \nRädda hela texten — 日本語 📖\n ",db.listAllNotes().single().note.note)
         assertEquals(1234L,db.listAllSessions().single().session.durationMilliseconds ?: -1L)
-        val backup=db.exportBackupJson()
+        val backup=BookBackupService(db).exportBackupJson()
         database { target ->
-            target.importBackupJson(backup)
-            assertArrayEquals(bytes,target.legacySource(plan.hash))
+            BookBackupService(target).importBackupJson(backup)
+            assertArrayEquals(bytes,BookBackupService(target).legacySource(plan.hash))
             // Deleting a projected book cannot cascade to or erase its source archive.
             target.writableDatabase.delete("books",null,null)
-            assertArrayEquals(bytes,target.legacySource(plan.hash))
-            assertEquals(1,target.exportBackupJson().getJSONArray("bookly_sources").length())
+            assertArrayEquals(bytes,BookBackupService(target).legacySource(plan.hash))
+            assertEquals(1,BookBackupService(target).exportBackupJson().getJSONArray("bookly_sources").length())
         }
     }
 
     @Test fun failedInsertRollsBackEveryBookAndArchive() = database { db ->
         val id=seed(db)
         db.writableDatabase.execSQL("CREATE TRIGGER qa_abort BEFORE INSERT ON reading_notes BEGIN SELECT RAISE(ABORT, 'QA injected failure'); END")
-        val failure=runCatching { db.importLegacy(LegacyMigration.preview(small().toString().toByteArray(Charsets.UTF_8))) }.exceptionOrNull()
+        val failure=runCatching { BookBackupService(db).importLegacy(LegacyMigration.preview(small().toString().toByteArray(Charsets.UTF_8))) }.exceptionOrNull()
         assertNotNull(failure)
         assertEquals(1L,count(db,"books"))
         assertEquals(0L,count(db,"reading_notes"))
@@ -122,10 +128,10 @@ class LegacyMigrationTest {
 
     @Test fun malformedBackupAndBrokenReferencesDoNotEraseLibrary() = database { db ->
         val id=seed(db)
-        val backup=db.exportBackupJson()
+        val backup=BookBackupService(db).exportBackupJson()
         backup.getJSONArray("reading_sessions").put(JSONObject().put("id",1).put("book_id",999999)
             .put("started_at","2023-01-01T00:00:00Z").put("ended_at","").put("duration_seconds",0))
-        assertNotNull(runCatching { db.importBackupJson(backup) }.exceptionOrNull())
+        assertNotNull(runCatching { BookBackupService(db).importBackupJson(backup) }.exceptionOrNull())
         assertEquals(1L,count(db,"books"))
         assertEquals("Existing book must survive",book(db, id)?.title)
         val malformed=small()
@@ -141,31 +147,31 @@ class LegacyMigrationTest {
         val bytes=root.toString().toByteArray()
         val plan=LegacyMigration.preview(bytes)
         assertEquals(1,plan.unlinkedContent)
-        db.importLegacy(plan)
+        BookBackupService(db).importLegacy(plan)
         assertEquals(0L,count(db,"reading_notes"))
-        assertArrayEquals(bytes,db.legacySource(plan.hash))
-        assertEquals(1,JSONObject(LegacyMigration.decode(db.legacySource(plan.hash))).getJSONObject("tables").getJSONArray("ThoughtModel").length())
+        assertArrayEquals(bytes,BookBackupService(db).legacySource(plan.hash))
+        assertEquals(1,JSONObject(LegacyMigration.decode(BookBackupService(db).legacySource(plan.hash))).getJSONObject("tables").getJSONArray("ThoughtModel").length())
     }
 
     @Test fun checksumFailureAndUnknownBackupFieldsAreRejectedWithoutChanges() = database { db ->
         val existing=seed(db)
         val source=small().toString().toByteArray(Charsets.UTF_8)
-        db.importLegacy(LegacyMigration.preview(source))
-        val backup=db.exportBackupJson()
+        BookBackupService(db).importLegacy(LegacyMigration.preview(source))
+        val backup=BookBackupService(db).exportBackupJson()
         backup.getJSONArray("bookly_sources").getJSONObject(0).put("sha256","bad")
-        assertNotNull(runCatching { db.importBackupJson(backup) }.exceptionOrNull())
-        val unknown=db.exportBackupJson().put("futureSection",JSONArray().put("must not discard"))
-        assertNotNull(runCatching { db.importBackupJson(unknown) }.exceptionOrNull())
+        assertNotNull(runCatching { BookBackupService(db).importBackupJson(backup) }.exceptionOrNull())
+        val unknown=BookBackupService(db).exportBackupJson().put("futureSection",JSONArray().put("must not discard"))
+        assertNotNull(runCatching { BookBackupService(db).importBackupJson(unknown) }.exceptionOrNull())
         assertEquals(2L,count(db,"books"))
         assertEquals("Existing book must survive",book(db, existing)?.title)
     }
 
     @Test fun legacyV1BackupsAppendWithoutReplacing() = database { db ->
         val first=seed(db)
-        val legacy=db.exportBackupJson().put("format","BOOK_TRACKER_BACKUP_V1")
+        val legacy=BookBackupService(db).exportBackupJson().put("format","BOOK_TRACKER_BACKUP_V1")
         legacy.remove("bookly_sources"); legacy.remove("bookly_links"); legacy.remove("reading_goals")
         legacy.remove("content_sha256"); legacy.remove("integrity_sha256")
-        db.importBackupJson(legacy)
+        BookBackupService(db).importBackupJson(legacy)
         assertEquals(2L,count(db,"books"))
         assertEquals("Existing book must survive",book(db, first)?.title)
     }

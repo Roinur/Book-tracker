@@ -1,4 +1,9 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package com.roinur.booktracker
+
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 
 import androidx.compose.material3.Text
 
@@ -12,6 +17,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -154,6 +161,23 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
     val bookImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(vm::importBackupFromUri) ?: vm.setStatus("Import cancelled.")
     }
+    val checkBackupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(vm::checkBackupFromUri)
+    }
+    var recoveryExportName by rememberSaveable { mutableStateOf<String?>(null) }
+    val recoveryExportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        val name = recoveryExportName
+        if (name != null && uri != null) vm.exportRecoveryCopy(name, uri)
+        recoveryExportName = null
+    }
+    vm.backupCheckReport?.let { report ->
+        AlertDialog(onDismissRequest = vm::closeBackupCheck,
+            shape = RoundedCornerShape(8.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            title = { Text("Backup check") },
+            text = { androidx.compose.foundation.layout.Column(Modifier.heightIn(max = 400.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) { Text(report) } },
+            confirmButton = { TextButton(onClick = vm::closeBackupCheck) { Text("Close") } })
+    }
     val bookExportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         uri?.let(vm::exportBackupToUri) ?: vm.setStatus("Export cancelled.")
     }
@@ -196,6 +220,13 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
         showSettings = false
         screenModeName = BookScreenMode.READING.name
         scope.launch { listState.scrollToItem(0) }
+    }
+
+    LaunchedEffect(vm.readingOpenRequest) {
+        if (vm.readingOpenRequest > 0) {
+            vm.activeBookId?.let { openReading(it) }
+            vm.consumeReadingOpenRequest()
+        }
     }
 
     fun minimizeReading() {
@@ -243,15 +274,15 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
         }
     }
 
-    val pageAnimationKey = "${showSettings}_${screenMode.name}_${selectedTab.name}_${vm.selectedBookId ?: 0}"
+    val pageAnimationKey = "${showSettings}_${screenMode.name}_${vm.selectedBookId ?: 0}"
     var pageVisible by remember(pageAnimationKey) { mutableStateOf(false) }
     LaunchedEffect(pageAnimationKey) { pageVisible = true }
-    val pageAlpha by animateFloatAsState(
+    val pageAlpha = animateFloatAsState(
         targetValue = if (pageVisible) 1f else 0f,
         animationSpec = tween(240, easing = FastOutSlowInEasing),
         label = "bookPageAlpha"
     )
-    val pageOffset by animateFloatAsState(
+    val pageOffset = animateFloatAsState(
         targetValue = if (pageVisible) 0f else 24f,
         animationSpec = tween(240, easing = FastOutSlowInEasing),
         label = "bookPageOffset"
@@ -293,21 +324,26 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                 }
             )
         }
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .graphicsLayer(alpha = pageAlpha, translationY = pageOffset)
-        ) {
+        val pagerState = rememberPagerState(initialPage = selectedTab.ordinal, pageCount = { BookTrackerTab.entries.size })
+        var navigationDragStart by remember { mutableStateOf(selectedTab.ordinal) }
+        LaunchedEffect(selectedTab) {
+            pagerState.animateScrollToPage(selectedTab.ordinal)
+        }
+        val pageContent: @Composable (BookTrackerTab) -> Unit = { pageTab ->
+            val selectedTab = pageTab
+            Box(Modifier.fillMaxSize()) {
             if (!showSettings && screenMode == BookScreenMode.TRENDS) {
                 TrendOverTimePanel(vm::trendTargets, vm::trendSnapshot, Modifier.fillMaxSize().padding(12.dp))
             } else LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .imePadding(),
-                state = if (!showSettings && screenMode == BookScreenMode.MAIN && selectedTabName == BookTrackerTab.LIBRARY.name) libraryListState else listState,
-                userScrollEnabled = screenMode != BookScreenMode.DETAIL && screenMode != BookScreenMode.ADD,
-                contentPadding = PaddingValues(12.dp),
+                state = if (!showSettings && screenMode == BookScreenMode.MAIN && selectedTab == BookTrackerTab.LIBRARY) libraryListState else listState,
+                userScrollEnabled = screenMode != BookScreenMode.DETAIL && screenMode != BookScreenMode.ADD &&
+                    !(!showSettings && screenMode == BookScreenMode.MAIN && selectedTab == BookTrackerTab.STATS),
+                contentPadding = if (!showSettings && screenMode == BookScreenMode.MAIN && selectedTab == BookTrackerTab.LIBRARY)
+                    PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 80.dp)
+                else PaddingValues(12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 if (showSettings) {
@@ -317,6 +353,11 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                             onImport = { bookImportLauncher.launch(arrayOf("application/json", "text/plain", "text/*")) },
                             onExport = { bookExportLauncher.launch("book_tracker_backup_${LocalDate.now(ZoneId.systemDefault())}.json") },
                             onPickBackupFolder = { bookBackupFolderLauncher.launch(null) },
+                            onCheckBackup = { checkBackupLauncher.launch(arrayOf("application/json", "text/plain", "text/*")) },
+                            onExportRecovery = { name ->
+                                recoveryExportName = name
+                                recoveryExportLauncher.launch("book_tracker_recovery_${name}")
+                            },
                             onExportLegacy = { hash ->
                                 legacyExportHash = hash
                                 legacySourceExportLauncher.launch("original_import_${hash.take(12)}.json")
@@ -550,15 +591,42 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                     }
                 }
             }
+            }
         }
-        if (!showSettings && screenMode == BookScreenMode.MAIN) {
-            BookBottomBar(
-                selected = selectedTab,
-                onSelected = {
-                    selectedTabName = it.name
-                    scope.launch { listState.scrollToItem(0) }
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            if (!showSettings && screenMode == BookScreenMode.MAIN) {
+                HorizontalPager(state = pagerState, userScrollEnabled = false, beyondBoundsPageCount = 1, pageSpacing = 14.dp, modifier = Modifier.fillMaxSize()) { page ->
+                    val tab = BookTrackerTab.entries[page]
+                    Box(Modifier.fillMaxSize().padding(bottom = if (tab == BookTrackerTab.STATS) 62.dp else 0.dp)) {
+                        pageContent(tab)
+                    }
                 }
-            )
+                Box(Modifier.align(Alignment.BottomCenter)) {
+                    BookBottomBar(
+                        selectedTab,
+                        pagePosition = { pagerState.currentPage + pagerState.currentPageOffsetFraction },
+                        onDragStart = { navigationDragStart = pagerState.currentPage },
+                        onDrag = { delta -> pagerState.dispatchRawDelta(-delta) },
+                        onDragEnd = { velocity ->
+                            val position = pagerState.currentPage + pagerState.currentPageOffsetFraction
+                            val target = when {
+                                velocity < -350f -> 1
+                                velocity > 350f -> 0
+                                position - navigationDragStart >= 0.12f -> 1
+                                position - navigationDragStart <= -0.12f -> 0
+                                else -> navigationDragStart
+                            }
+                            selectedTabName = BookTrackerTab.entries[target].name
+                            scope.launch { pagerState.animateScrollToPage(target) }
+                        },
+                        onSelected = { tab -> selectedTabName = tab.name }
+                    )
+                }
+            } else {
+                Box(Modifier.fillMaxSize().graphicsLayer { alpha = pageAlpha.value; translationY = pageOffset.value }) {
+                    pageContent(selectedTab)
+                }
+            }
         }
     }
 

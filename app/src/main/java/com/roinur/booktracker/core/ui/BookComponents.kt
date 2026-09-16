@@ -59,10 +59,14 @@ internal fun BookCoverImage(
     val context = LocalContext.current
     val localBitmap by produceState<ImageBitmap?>(initialValue = null, coverUrl) {
         value = null
-        if (coverUrl.startsWith("content://") || coverUrl.startsWith("file://")) {
+        if (coverUrl.isNotBlank()) {
             value = withContext(Dispatchers.IO) {
                 runCatching {
-                    context.contentResolver.openInputStream(Uri.parse(coverUrl))?.use { input ->
+                    val restored = com.roinur.booktracker.data.backup.BookPortableCovers.file(context, coverUrl)
+                    val stream = if (restored.isFile) restored.inputStream()
+                        else if (coverUrl.startsWith("content://") || coverUrl.startsWith("file://")) context.contentResolver.openInputStream(Uri.parse(coverUrl))
+                        else null
+                    stream?.use { input ->
                         BitmapFactory.decodeStream(input)?.asImageBitmap()
                     }
                 }.getOrNull()
@@ -81,6 +85,7 @@ internal fun BookCoverImage(
         coverUrl.isNotBlank() -> {
         ThumbnailImage(
             thumbnailUrl = coverUrl,
+            persistCover = true,
 
             contentDescription = "Cover for $title",
             modifier = modifier,

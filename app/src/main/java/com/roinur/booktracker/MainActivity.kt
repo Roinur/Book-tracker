@@ -31,18 +31,26 @@ class MainActivity : ComponentActivity() {
             BookTrackerApp(bookVm)
         }
 
+        handleReadingNotification(intent)
         handleIncomingShareIntent(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        handleReadingNotification(intent)
         handleIncomingShareIntent(intent)
     }
 
     override fun onResume() {
         super.onResume()
         if (::bookVm.isInitialized) bookVm.reload()
+    }
+
+    private fun handleReadingNotification(intent: Intent?) {
+        if (intent?.action != "com.roinur.booktracker.OPEN_READING") return
+        bookVm.requestOpenReading(intent.getIntExtra("reading_book_id", -1), intent.getLongExtra("reading_started_at", -1L))
+        intent.action = null
     }
 
     private fun handleIncomingShareIntent(incoming: Intent?) {

@@ -75,6 +75,11 @@ internal fun CoverSearchDialog(
     onDismiss: () -> Unit,
     onPick: (String) -> Unit
 ) {
+    var googleOpen by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    if (googleOpen) {
+        GoogleCoverSearchDialog(vm.coverSearchQuery, { googleOpen = false }, onPick)
+        return
+    }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
             modifier = Modifier
@@ -95,7 +100,7 @@ internal fun CoverSearchDialog(
                 OutlinedTextField(
                     value = vm.coverSearchQuery,
                     onValueChange = vm::updateCoverSearchQuery,
-                    label = { Text("Book title or author") },
+                    label = { Text("ISBN, title or author") },
                     singleLine = true,
                     modifier = Modifier.weight(1f),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
@@ -104,6 +109,9 @@ internal fun CoverSearchDialog(
                 Button(onClick = vm::searchCoverImages, enabled = !vm.coverSearchLoading, modifier = Modifier.align(Alignment.CenterVertically)) {
                     if (vm.coverSearchLoading) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Go")
                 }
+            }
+            androidx.compose.material3.OutlinedButton(onClick = { googleOpen = true }, enabled = vm.coverSearchQuery.isNotBlank(), modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp)) {
+                Text("Search Google Images")
             }
             if (!vm.coverSearchLoading && vm.coverSearchResults.isEmpty()) {
                 Text(

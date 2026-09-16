@@ -120,12 +120,15 @@ class BookReadingTimerService : Service() {
             0,
             Intent(this, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                action = "com.roinur.booktracker.OPEN_READING"
+                putExtra("reading_book_id", prefs.getInt(KEY_BOOK_ACTIVE_ID_SERVICE, -1))
+                putExtra("reading_started_at", prefs.getLong(KEY_BOOK_ACTIVE_STARTED_MS_SERVICE, -1L))
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val pageText = if (pageCount > 0) "$page/$pageCount" else "$page pages"
         val builder = NotificationCompat.Builder(this, BOOK_TIMER_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_menu_recent_history)
+            .setSmallIcon(R.drawable.ic_clock_filled_24)
             .setContentTitle(if (paused) "Reading paused" else "Reading now")
             .setContentText(
                 if (countdownActive) {
@@ -151,6 +154,7 @@ class BookReadingTimerService : Service() {
                 )
             )
             .setContentIntent(openIntent)
+            .addAction(R.drawable.ic_book_24, if (paused) "Resume reading" else "Open reading", openIntent)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
@@ -183,11 +187,14 @@ class BookReadingTimerService : Service() {
             1,
             Intent(this, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                action = "com.roinur.booktracker.OPEN_READING"
+                putExtra("reading_book_id", prefs.getInt(KEY_BOOK_ACTIVE_ID_SERVICE, -1))
+                putExtra("reading_started_at", prefs.getLong(KEY_BOOK_ACTIVE_STARTED_MS_SERVICE, -1L))
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val notification = NotificationCompat.Builder(this, BOOK_TIMER_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_menu_recent_history)
+            .setSmallIcon(R.drawable.ic_clock_filled_24)
             .setContentTitle("Countdown finished")
             .setContentText("Your reading countdown is done.")
             .setContentIntent(openIntent)

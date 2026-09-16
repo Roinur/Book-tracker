@@ -1,6 +1,6 @@
 package com.roinur.booktracker
 
-import androidx.compose.material3.Text
+import com.roinur.booktracker.BookFitText as Text
 
 import android.app.DatePickerDialog
 import androidx.compose.animation.animateContentSize
@@ -333,7 +333,10 @@ internal fun BookDetailCard(
             BookButtonLabel(R.drawable.ic_add_24, "Add note or session")
         }
         Button(onClick = onOpenGraph, modifier = Modifier.fillMaxWidth().height(46.dp)) {
-            BookButtonLabel(R.drawable.ic_chart_24, "Show graph")
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                BookMiniIcon("stats", androidx.compose.material3.LocalContentColor.current, Modifier.size(18.dp))
+                Text("Show graph")
+            }
         }
     }
     if (showCollectionsDialog) {

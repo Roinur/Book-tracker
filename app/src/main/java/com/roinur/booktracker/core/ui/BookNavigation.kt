@@ -1,8 +1,14 @@
 package com.roinur.booktracker
 
-import androidx.compose.material3.Text
+import com.roinur.booktracker.BookFitText as Text
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -73,7 +79,7 @@ internal fun BookTopBar(
         navigationIcon = {
             if (onBack != null) {
                 IconButton(onClick = onBack, modifier = Modifier.padding(start = 8.dp)) {
-                    Text("‹", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
+                    Text("\u2039", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
                 }
             } else {
                 ThemeToggleWithAccentPicker(
@@ -91,7 +97,7 @@ internal fun BookTopBar(
                 modifier = Modifier.padding(end = 8.dp)
             ) {
                 Text(
-                    text = if (settingsActive) "×" else "⚙",
+                    text = if (settingsActive) "\u00D7" else "\u2699",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -101,58 +107,46 @@ internal fun BookTopBar(
 }
 
 @Composable
-internal fun BookBottomBar(
-    selected: BookTrackerTab,
-    onSelected: (BookTrackerTab) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(44.dp)
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .padding(horizontal = 42.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(18.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        BookTrackerTab.entries.forEach { tab ->
-            val active = selected == tab
-            val itemScale by animateFloatAsState(
-                targetValue = if (active) 1f else 0.92f,
-                animationSpec = tween(180, easing = FastOutSlowInEasing),
-                label = "bookBottomItemScale"
-            )
-            val activeFill by animateFloatAsState(
-                targetValue = if (active) 0.48f else 0f,
-                animationSpec = tween(180, easing = FastOutSlowInEasing),
-                label = "bookBottomItemFill"
-            )
-            Surface(
-                onClick = { onSelected(tab) },
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .graphicsLayer(scaleX = itemScale, scaleY = itemScale),
-                shape = RoundedCornerShape(18.dp),
-                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = activeFill)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(vertical = 2.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        BookMiniIcon(
-                            kind = tab.symbol,
-                            tint = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(
-                            text = tab.label,
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, lineHeight = 10.sp),
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+internal fun BookBottomBar(selected: BookTrackerTab, pagePosition: () -> Float, onDragStart: () -> Unit, onDrag: (Float) -> Unit, onDragEnd: (Float) -> Unit, onSelected: (BookTrackerTab) -> Unit) {
+    Box(Modifier.fillMaxWidth().height(62.dp).padding(bottom = 10.dp), contentAlignment = Alignment.TopCenter) {
+        BoxWithConstraints(
+            Modifier.fillMaxWidth(0.70f).height(46.dp)
+                .pointerInput(Unit) {
+                    val velocity = androidx.compose.ui.input.pointer.util.VelocityTracker()
+                    detectHorizontalDragGestures(
+                        onDragStart = { velocity.resetTracking(); onDragStart() },
+                        onDragCancel = { onDragEnd(0f) },
+                        onDragEnd = { onDragEnd(velocity.calculateVelocity().x / density) },
+                        onHorizontalDrag = { change, amount ->
+                            velocity.addPosition(change.uptimeMillis, change.position)
+                            change.consume(); onDrag(amount)
+                        }
+                    )
+                }
+                .background(MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(24.dp))
+                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.65f), RoundedCornerShape(24.dp))
+                .padding(3.dp)
+        ) {
+            val segmentWidth = maxWidth / 2
+            Box(Modifier.graphicsLayer { translationX = segmentWidth.toPx() * pagePosition() }.width(segmentWidth).fillMaxHeight()
+                .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(21.dp)))
+            Row(Modifier.fillMaxSize()) {
+                BookTrackerTab.entries.forEach { tab ->
+                    val active = selected == tab
+                    Surface(
+                        onClick = { onSelected(tab) },
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        shape = RoundedCornerShape(21.dp), color = Color.Transparent
+                    ) {
+                        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center) {
+                            BookMiniIcon(tab.symbol,
+                                if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                Modifier.size(19.dp))
+                            Text(tab.label, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 11.sp),
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }
@@ -169,63 +163,63 @@ internal fun BookMiniIcon(
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
-        val stroke = (w * 0.11f).coerceAtLeast(2f)
+        // Filled silhouettes with transparent details remain readable on every theme surface.
+        fun shape(block: Path.() -> Unit) = Path().apply {
+            fillType = androidx.compose.ui.graphics.PathFillType.EvenOdd
+            block()
+        }
         when (kind) {
-            "stats" -> {
-                val bars = listOf(0.52f, 0.78f, 0.36f)
-                bars.forEachIndexed { index, fraction ->
-                    val x = w * (0.28f + index * 0.22f)
-                    drawLine(
-                        tint,
-                        Offset(x, h * 0.82f),
-                        Offset(x, h * (0.82f - fraction)),
-                        strokeWidth = stroke,
-                        cap = StrokeCap.Round
-                    )
-                }
+            "stats" -> repeat(3) { i ->
+                val height = h * (0.34f + i * 0.23f)
+                drawRoundRect(tint.copy(alpha = 0.72f + i * 0.14f),
+                    Offset(w * (0.08f + i * 0.30f), h * 0.91f - height),
+                    Size(w * 0.23f, height), CornerRadius(w * 0.07f))
             }
             "library" -> {
-                val gap = w * 0.06f
-                val bookWidth = (w - gap * 2f) / 3f
-                repeat(3) { index ->
-                    val left = index * (bookWidth + gap)
-                    drawRoundRect(
-                        color = tint,
-                        topLeft = Offset(left, h * 0.18f),
-                        size = Size(bookWidth, h * 0.64f),
-                        cornerRadius = CornerRadius(w * 0.06f, w * 0.06f),
-                        style = Stroke(width = stroke * 0.72f)
-                    )
+                drawPath(shape {
+                    moveTo(w*.06f,h*.17f)
+                    cubicTo(w*.20f,h*.09f,w*.37f,h*.12f,w*.47f,h*.20f)
+                    lineTo(w*.47f,h*.88f)
+                    cubicTo(w*.32f,h*.79f,w*.18f,h*.79f,w*.06f,h*.85f); close()
+                }, tint.copy(alpha=.78f))
+                drawPath(shape {
+                    moveTo(w*.53f,h*.20f)
+                    cubicTo(w*.66f,h*.10f,w*.82f,h*.10f,w*.94f,h*.17f)
+                    lineTo(w*.94f,h*.85f)
+                    cubicTo(w*.79f,h*.79f,w*.66f,h*.79f,w*.53f,h*.88f); close()
+                    moveTo(w*.72f,h*.13f); lineTo(w*.83f,h*.13f)
+                    lineTo(w*.83f,h*.49f); lineTo(w*.775f,h*.43f)
+                    lineTo(w*.72f,h*.49f); close()
+                }, tint)
+            }
+            "pages", "notes" -> drawPath(shape {
+                moveTo(w*.16f,h*.08f); lineTo(w*.63f,h*.08f)
+                lineTo(w*.86f,h*.31f); lineTo(w*.86f,h*.92f)
+                lineTo(w*.16f,h*.92f); close()
+                moveTo(w*.63f,h*.10f); lineTo(w*.63f,h*.32f)
+                lineTo(w*.84f,h*.32f); close()
+                for (y in listOf(.46f,.61f,.76f)) {
+                    addRect(androidx.compose.ui.geometry.Rect(w*.29f,h*y,w*.71f,h*(y+.065f)))
                 }
-            }
-            "pages" -> {
-                drawRoundRect(
-                    color = tint,
-                    topLeft = Offset(w * 0.12f, h * 0.18f),
-                    size = Size(w * 0.76f, h * 0.64f),
-                    cornerRadius = CornerRadius(w * 0.08f, w * 0.08f),
-                    style = Stroke(width = stroke)
-                )
-                drawLine(tint, Offset(w * 0.5f, h * 0.2f), Offset(w * 0.5f, h * 0.82f), strokeWidth = stroke, cap = StrokeCap.Round)
-                drawLine(tint, Offset(w * 0.22f, h * 0.36f), Offset(w * 0.42f, h * 0.36f), strokeWidth = stroke * 0.68f, cap = StrokeCap.Round)
-                drawLine(tint, Offset(w * 0.58f, h * 0.36f), Offset(w * 0.78f, h * 0.36f), strokeWidth = stroke * 0.68f, cap = StrokeCap.Round)
-            }
-            "time" -> {
-                drawCircle(tint, radius = w * 0.34f, center = Offset(w * 0.5f, h * 0.5f), style = Stroke(width = stroke))
-                drawLine(tint, Offset(w * 0.5f, h * 0.5f), Offset(w * 0.5f, h * 0.29f), strokeWidth = stroke, cap = StrokeCap.Round)
-                drawLine(tint, Offset(w * 0.5f, h * 0.5f), Offset(w * 0.66f, h * 0.58f), strokeWidth = stroke, cap = StrokeCap.Round)
-            }
-            "streak" -> {
-                val flame = Path().apply {
-                    moveTo(w * 0.5f, h * 0.88f)
-                    cubicTo(w * 0.22f, h * 0.70f, w * 0.22f, h * 0.42f, w * 0.44f, h * 0.30f)
-                    cubicTo(w * 0.48f, h * 0.18f, w * 0.48f, h * 0.12f, w * 0.58f, h * 0.06f)
-                    cubicTo(w * 0.62f, h * 0.28f, w * 0.86f, h * 0.36f, w * 0.78f, h * 0.64f)
-                    cubicTo(w * 0.74f, h * 0.78f, w * 0.63f, h * 0.86f, w * 0.5f, h * 0.88f)
-                    close()
-                }
-                drawPath(flame, tint, style = Stroke(width = stroke, cap = StrokeCap.Round))
-            }
+            }, tint)
+            "time" -> drawPath(shape {
+                addOval(androidx.compose.ui.geometry.Rect(w*.08f,h*.08f,w*.92f,h*.92f))
+                moveTo(w*.45f,h*.23f); lineTo(w*.55f,h*.23f)
+                lineTo(w*.55f,h*.47f); lineTo(w*.73f,h*.63f)
+                lineTo(w*.66f,h*.71f); lineTo(w*.45f,h*.52f); close()
+            }, tint)
+            "streak" -> drawPath(shape {
+                moveTo(w*.46f,h*.05f)
+                cubicTo(w*.51f,h*.27f,w*.18f,h*.36f,w*.17f,h*.63f)
+                cubicTo(w*.14f,h*.98f,w*.81f,h*1.03f,w*.84f,h*.65f)
+                cubicTo(w*.87f,h*.47f,w*.72f,h*.29f,w*.68f,h*.25f)
+                lineTo(w*.62f,h*.43f)
+                cubicTo(w*.60f,h*.24f,w*.54f,h*.12f,w*.46f,h*.05f); close()
+                moveTo(w*.51f,h*.49f)
+                cubicTo(w*.48f,h*.66f,w*.33f,h*.67f,w*.35f,h*.79f)
+                cubicTo(w*.40f,h*.97f,w*.70f,h*.88f,w*.65f,h*.73f)
+                cubicTo(w*.63f,h*.64f,w*.55f,h*.59f,w*.51f,h*.49f); close()
+            }, tint)
         }
     }
 }

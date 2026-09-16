@@ -1,5 +1,13 @@
 package com.roinur.booktracker
 
+import com.roinur.booktracker.data.database.BookTrackerDatabase
+
+import com.roinur.booktracker.data.backup.BookBackupService
+import com.roinur.booktracker.data.stats.BookStatsRepository
+
+import com.roinur.booktracker.data.media.BookCoverCache
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import android.app.Application
 import android.content.Context
 import android.net.Uri
@@ -22,6 +30,80 @@ import java.time.format.DateTimeFormatter
 
 class BookTrackerViewModel(application: Application) : AndroidViewModel(application) {
     private val db = BookTrackerDatabase(application)
+    private val backups = BookBackupService(db, application)
+    private val recovery = com.roinur.booktracker.data.backup.BookRecoveryStore(java.io.File(application.filesDir, "recovery_copies"))
+    internal var recoveryCopies by mutableStateOf(recovery.list())
+        private set
+    var backupCheckReport by mutableStateOf<String?>(null)
+        private set
+    var readingOpenRequest by mutableStateOf(0)
+        private set
+
+    fun requestOpenReading(bookId: Int, startedAt: Long) {
+        if (activeBookId == bookId && activeStartedAtMs == startedAt) readingOpenRequest++
+    }
+    fun consumeReadingOpenRequest() { readingOpenRequest = 0 }
+    fun closeBackupCheck() { backupCheckReport = null }
+
+    private suspend fun checkpoint(reason: String): Boolean {
+        val result = withContext(Dispatchers.IO) {
+            runCatching { recovery.save(backups.exportBackupJson().toString().toByteArray(Charsets.UTF_8), reason) }
+        }
+        recoveryCopies = withContext(Dispatchers.IO) { recovery.list() }
+        if (result.isFailure) statusMessage = "Change cancelled: recovery copy failed. ${result.exceptionOrNull()?.message.orEmpty()}"
+        return result.isSuccess
+    }
+
+    fun exportRecoveryCopy(name: String, uri: Uri) {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching {
+                val bytes = recovery.read(name)
+                writeAndVerifyBackup(getApplication<Application>(), uri, JSONObject(LegacyMigration.decode(bytes)))
+            } }
+            statusMessage = result.fold({ "Recovery copy exported and verified." }, { "Export failed: ${it.message}" })
+        }
+    }
+
+    fun checkBackupFromUri(uri: Uri) {
+        if (importBusy) return
+        importBusy = true
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching {
+                val bytes = getApplication<Application>().contentResolver.openInputStream(uri)?.use(LegacyMigration::readLimited)
+                    ?: throw IOException("Could not read backup.")
+                val root = JSONObject(LegacyMigration.decode(bytes))
+                if (root.has("tables")) {
+                    val preview = LegacyMigration.preview(bytes)
+                    "Valid legacy export\n${preview.summary}\n${preview.unlinkedContent} unlinked records preserved."
+                } else {
+                    val preview = LegacyMigration.previewTrackerBackup(bytes)
+                    val books = root.getJSONArray("books")
+                    var covers = 0
+                    val assets = root.optJSONArray("cover_assets")
+                    val embeddedUrls = if (assets == null) emptySet() else (0 until assets.length()).map { assets.getJSONObject(it) }
+                        .filter { !it.optBoolean("missing") }.map { it.getString("url") }.toSet()
+                    var localCovers = 0
+                    for (i in 0 until books.length()) {
+                        val cover = books.getJSONObject(i).optString("cover_url")
+                        if (cover.isNotBlank()) {
+                            covers++
+                            if (cover !in embeddedUrls && !cover.startsWith("https://") && !cover.startsWith("http://") && !cover.startsWith("data:")) localCovers++
+                        }
+                    }
+                    buildString {
+                        append(if (preview.integrityProtected) "Checksum and structure verified." else "Structure verified; this older backup has no checksum.")
+                        append("\n${preview.bookCount} books\n${preview.sessionCount} sessions\n${preview.noteCount} notes\n${preview.goalCount} goals\n$covers cover references\n${embeddedUrls.size} embedded covers")
+                        if (localCovers > 0) append("\n$localCovers covers refer to local files; those files are not embedded in this backup.")
+                        if (preview.exportedAt.isNotBlank()) append("\nExported: ${preview.exportedAt}")
+                    }
+                }
+            } }
+            backupCheckReport = result.fold({ "$it\n\nNo data was imported." }, { "Backup check failed: ${it.message}\n\nNo data was changed." })
+            importBusy = false
+        }
+    }
+
+    private val statistics = BookStatsRepository(db)
     suspend fun trendTargets(kind: TrendTargetKind, includeMisc: Boolean): List<TrendTarget> = withContext(Dispatchers.IO) {
         BookTrendData(db.listBooks("", BookSortField.ADDED, false), emptyList()).targets(kind)
     }
@@ -29,6 +111,8 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         BookTrendData(db.listBooks("", BookSortField.ADDED, false), db.listAllSessions().filterNot { it.session.excludeFromStatistics }).snapshot(request)
     }
     private val api = BookLookupClient()
+    private var coverCacheJob: Job? = null
+    private var retainedCoverUrls: Set<String>? = null
     private val prefs = application.getSharedPreferences(BOOK_TRACKER_PREFS, Context.MODE_PRIVATE)
 
     var themeMode by mutableStateOf(loadThemeMode())
@@ -134,10 +218,26 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
 
     fun reload() {
         statsBooks = db.listBooks("", BookSortField.ADDED, false)
+        val coverUrls = statsBooks.map { it.coverUrl }.filter { it.startsWith("http://") || it.startsWith("https://") }.toSet()
+        val allCoverUrls = statsBooks.map { it.coverUrl }.filter { it.isNotBlank() }.toSet()
+        if (retainedCoverUrls != allCoverUrls) {
+            retainedCoverUrls = allCoverUrls
+            val cache = BookCoverCache.get(getApplication())
+            cache.retain(coverUrls)
+            coverCacheJob?.cancel()
+            coverCacheJob = viewModelScope.launch(Dispatchers.IO) {
+                cache.prune()
+                com.roinur.booktracker.data.backup.BookPortableCovers.prune(getApplication(), allCoverUrls)
+                coverUrls.forEach { url ->
+                    ensureActive()
+                    if (!com.roinur.booktracker.data.backup.BookPortableCovers.file(getApplication(), url).isFile) runCatching { cache.load(url) }
+                }
+            }
+        }
         finishedYearBooks = statsBooks.filter { bookCompletionYear(it.finishedAt) == LocalDate.now().year }.sortedByDescending { it.finishedAt }
-        preservedLegacyArchives = db.legacyArchives()
+        preservedLegacyArchives = backups.legacyArchives()
         books = db.listBooks(searchInput, sortField, sortDescending)
-        stats = db.loadStats()
+        stats = statistics.loadStats()
         readingGoals = db.loadReadingGoals()
         collectionSuggestions = db.listCollections()
         if (selectedBookId != null && statsBooks.none { it.id == selectedBookId }) {
@@ -324,12 +424,13 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
                 if (titleInput.isBlank()) titleInput = "ISBN $isbn"
                 return@launch
             }
+            if (normalizeIsbn(isbnInput) != isbn) { fetching = false; return@launch }
             isbnInput = result.isbn
-            titleInput = result.title
-            authorsInput = result.authors
-            pageCountInput = result.pageCount.takeIf { it > 0 }?.toString().orEmpty()
-            draftCoverUrl = result.coverUrl
-            draftSourceUrl = result.sourceUrl
+            if (titleInput.isBlank() || titleInput == "ISBN $isbn") titleInput = result.title
+            if (authorsInput.isBlank()) authorsInput = result.authors
+            if ((pageCountInput.toIntOrNull() ?: 0) <= 0) pageCountInput = result.pageCount.takeIf { it > 0 }?.toString().orEmpty()
+            if (draftCoverUrl.isBlank()) draftCoverUrl = result.coverUrl
+            if (draftSourceUrl.isBlank()) draftSourceUrl = result.sourceUrl
             fetching = false
             statusMessage = "Found ${result.title.ifBlank { "ISBN $isbn" }}. Review and save."
         }
@@ -351,6 +452,7 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         )
         viewModelScope.launch {
             val editingId = editingBookId
+            if (editingId != null && !checkpoint("before-book-edit")) return@launch
             val id = withContext(Dispatchers.IO) { db.upsertBook(seed, editingId) }
             clearDraft()
             selectedBookId = id.takeIf { it > 0 }
@@ -393,7 +495,8 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
             statusMessage = "Could not find the active book. Session is still running."
             return false
         }
-        val safePage = page.coerceIn(0, book.pageCount.takeIf { it > 0 } ?: Int.MAX_VALUE)
+        // Keep the actual pages read even when the catalog page count is inaccurate.
+        val safePage = page.coerceAtLeast(0)
         val pagesDelta = (safePage - book.currentPage).coerceAtLeast(0)
         val startedMs = activeStartedAtMs.takeIf { it > 0L } ?: System.currentTimeMillis()
         val endedMs = System.currentTimeMillis()
@@ -474,6 +577,7 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
 
     fun deleteSessionNote(note: BookNote) {
         viewModelScope.launch {
+            if (!checkpoint("before-note-delete")) return@launch
             withContext(Dispatchers.IO) { db.deleteReadingNote(note.id) }
             getApplication<Application>().getSharedPreferences("book_note_drafts", Context.MODE_PRIVATE).edit().remove("edit_${note.id}").commit()
             statusMessage = "${note.kind.label} deleted."
@@ -540,6 +644,7 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         }
         val started = ended.minusSeconds(minutes * 60L)
         viewModelScope.launch {
+            if (!checkpoint("before-session-edit")) return@launch
             withContext(Dispatchers.IO) {
                 val pagesRead = db.inferPagesRead(
                     bookId = bookId,
@@ -592,6 +697,7 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         }
         val started = ended.minusSeconds(minutes * 60L)
         viewModelScope.launch {
+            if (!checkpoint("before-session-edit")) return@launch
             withContext(Dispatchers.IO) {
                 if (endedText == bookFormatEditableDate(session.activityAt) && minutesText == (session.durationSeconds / 60L).coerceAtLeast(1L).toString() && pageReached == session.pageReached) {
                     db.setSessionStatisticsExcluded(session.id, excludeFromStatistics)
@@ -623,6 +729,7 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
 
     fun deleteReadingSession(session: BookReadingSessionRow) {
         viewModelScope.launch {
+            if (!checkpoint("before-session-delete")) return@launch
             withContext(Dispatchers.IO) { db.deleteReadingSession(session.id, session.bookId) }
             statusMessage = "Reading session deleted."
             reload()
@@ -902,8 +1009,9 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun deleteBook(bookId: Int) {
-        if (activeBookId == bookId) clearActiveBook()
         viewModelScope.launch {
+            if (!checkpoint("before-book-delete")) return@launch
+            if (activeBookId == bookId) clearActiveBook()
             withContext(Dispatchers.IO) { db.deleteBook(bookId) }
             selectedBookId = selectedBookId?.takeIf { it != bookId }
             statusMessage = "Book deleted."
@@ -917,7 +1025,7 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    val backup = db.exportBackupJson()
+                    val backup = backups.exportBackupJson()
                     writeAndVerifyBackup(context, uri, backup)
                     backup.getJSONArray("books").length()
                 }
@@ -968,7 +1076,8 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
                 runCatching {
                     val checkedAgain = LegacyMigration.previewTrackerBackup(plan.source)
                     check(checkedAgain.fileSha256 == plan.fileSha256) { "Backup changed after preview." }
-                    db.importBackupJson(checkedAgain.root, checkedAgain.source)
+                    recovery.save(backups.exportBackupJson().toString().toByteArray(Charsets.UTF_8), "before-import")
+                    backups.importBackupJson(checkedAgain.root, checkedAgain.source)
                 }
             }
             statusMessage = result.fold(
@@ -977,6 +1086,7 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
             )
             importBusy = false
             pendingTrackerImport = null
+            recoveryCopies = withContext(Dispatchers.IO) { recovery.list() }
             reload()
             if (result.isSuccess) maybeAutoBackup()
         }
@@ -987,10 +1097,14 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         if (importBusy) return
         importBusy = true
         viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) { runCatching { db.importLegacy(plan) } }
+            val result = withContext(Dispatchers.IO) { runCatching {
+                recovery.save(backups.exportBackupJson().toString().toByteArray(Charsets.UTF_8), "before-legacy-import")
+                backups.importLegacy(plan)
+            } }
             statusMessage = result.fold(onSuccess = { it }, onFailure = { "Import failed: ${it.message}. Existing data kept." })
             importBusy = false
             pendingLegacyImport = null
+            recoveryCopies = withContext(Dispatchers.IO) { recovery.list() }
             reload()
             if (result.isSuccess) maybeAutoBackup()
         }
@@ -1000,7 +1114,7 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    val bytes = db.legacySource(hash)
+                    val bytes = backups.legacySource(hash)
                     check(LegacyMigration.hash(bytes) == hash) { "Archive checksum mismatch" }
                     getApplication<Application>().contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) }
                         ?: throw IOException("Could not write legacy import file.")
@@ -1046,7 +1160,7 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
                         pendingName
                     ) ?: throw IOException("Could not create backup file.")
                     try {
-                        writeAndVerifyBackup(context, pendingUri, db.exportBackupJson())
+                        writeAndVerifyBackup(context, pendingUri, backups.exportBackupJson())
                         DocumentsContract.renameDocument(context.contentResolver, pendingUri, fileName)
                             ?: throw IOException("Could not finalize verified backup file.")
                     } catch (error: Throwable) {

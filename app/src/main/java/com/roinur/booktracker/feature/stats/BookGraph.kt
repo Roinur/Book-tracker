@@ -97,7 +97,7 @@ internal fun BookGraphDialog(
                     .height(280.dp)
             )
             Text(
-                "${sessions.size} session(s) - ${bookFormatDuration(sessions.sumOf { it.durationSeconds })} - ${sessions.sumOf { it.pagesRead }} pages",
+                "${sessions.size} ${if (sessions.size == 1) "session" else "sessions"} - ${bookFormatDuration(sessions.sumOf { it.durationSeconds })} - ${sessions.sumOf { it.pagesRead }} pages",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

@@ -57,7 +57,7 @@ internal object LegacyMigration {
         while (true) {
             val read = input.read(buffer)
             if (read == -1) break
-            require(output.size() + read <= 32 * 1024 * 1024) { "File exceeds 32 MB; nothing imported." }
+            require(output.size() + read <= 128 * 1024 * 1024) { "File exceeds 128 MB; nothing imported." }
             output.write(buffer, 0, read)
         }
         return output.toByteArray()
@@ -74,12 +74,12 @@ internal object LegacyMigration {
     }
 
     fun previewTrackerBackup(bytes: ByteArray): TrackerBackupPreview {
-        require(bytes.size <= 32 * 1024 * 1024) { "Import exceeds the 32 MB limit. Nothing imported." }
+        require(bytes.size <= 128 * 1024 * 1024) { "Import exceeds the 128 MB limit. Nothing imported." }
         val root = JSONObject(decode(bytes))
         val format = root.optString("format")
         require(format in setOf(BACKUP_FORMAT_V1, BACKUP_FORMAT_V2, BACKUP_FORMAT)) { "Unsupported backup format." }
         val allowed = mutableSetOf("format", "exported_at", "books", "reading_sessions", "reading_notes", "bookly_sources", "bookly_links")
-        if (format == BACKUP_FORMAT) allowed += setOf("reading_goals", "content_sha256", "integrity_sha256")
+        if (format == BACKUP_FORMAT) allowed += setOf("reading_goals", "content_sha256", "integrity_sha256", "cover_assets")
         require(root.keys().asSequence().all { it in allowed }) { "Unknown backup sections; restore cancelled rather than discard data." }
         listOf("books", "reading_sessions", "reading_notes").forEach { name ->
             val array = root.getJSONArray(name)
@@ -95,6 +95,7 @@ internal object LegacyMigration {
             require(root.getString("content_sha256") == contentHash) { "Backup content checksum mismatch. Nothing imported." }
             require(root.getString("integrity_sha256") == trackerIntegrityHash(root)) { "Backup integrity checksum mismatch. Nothing imported." }
         }
+        com.roinur.booktracker.data.backup.BookPortableCovers.validate(root)
         return TrackerBackupPreview(
             source = bytes.copyOf(),
             root = root,
@@ -114,6 +115,7 @@ internal object LegacyMigration {
     private fun trackerContentHash(root: JSONObject): String {
         val content = JSONObject()
         trackerSections.forEach { section -> content.put(section, root.optJSONArray(section) ?: JSONArray()) }
+        if (root.has("cover_assets")) content.put("cover_assets", root.getJSONArray("cover_assets"))
         return hash(canonicalJson(content).toByteArray(Charsets.UTF_8))
     }
 
@@ -147,7 +149,7 @@ internal object LegacyMigration {
     }
 
     fun preview(bytes: ByteArray): LegacyImportPreview {
-        require(bytes.size <= 32 * 1024 * 1024) { "Import exceeds the 32 MB limit. Original file is unchanged." }
+        require(bytes.size <= 128 * 1024 * 1024) { "Import exceeds the 128 MB limit. Original file is unchanged." }
         val root = JSONObject(decode(bytes))
         val tables = root.getJSONObject("tables")
         listOf("BookModel", "ThoughtModel", "ReadingSessionModel").forEach { tables.getJSONArray(it) }

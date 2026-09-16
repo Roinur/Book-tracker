@@ -5,6 +5,8 @@ import androidx.compose.material3.Text
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -122,14 +124,14 @@ internal fun BookLineChart(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                selectedPoint?.let { point ->
-                    val unit = if (metric == BookGraphMetric.TIME) "minutes" else "pages"
-                    Text(
-                        "${point.date.format(DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US))}: ${point.pagesRead} $unit",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
+                val unit = if (metric == BookGraphMetric.TIME) "minutes" else "pages"
+                val point = selectedPoint
+                Text(
+                    if (point == null) " " else "${point.date.format(DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US))}: ${point.pagesRead} $unit",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
             }
             metricSelector()
         }
@@ -138,15 +140,26 @@ internal fun BookLineChart(
                 .fillMaxWidth()
                 .weight(1f)
                 .pointerInput(visiblePoints, range, metric) {
-                    detectTapGestures { offset ->
-                        if (visiblePoints.isEmpty()) return@detectTapGestures
-                        val left = 44f
-                        val right = size.width - 28f
-                        val width = (right - left).coerceAtLeast(1f)
-                        val step = if (visiblePoints.size <= 1) width else width / (visiblePoints.size - 1).toFloat()
-                        val index = ((offset.x - left) / step).roundToInt().coerceIn(0, visiblePoints.lastIndex)
-                        selectedPoint = visiblePoints[index]
-                        onPointSelected(visiblePoints[index])
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        fun select(x: Float) {
+                            if (visiblePoints.isEmpty()) return
+                            val width = (size.width - 44f - 28f).coerceAtLeast(1f)
+                            val step = if (visiblePoints.size <= 1) width else width / (visiblePoints.size - 1)
+                            val index = ((x - 44f) / step).roundToInt().coerceIn(0, visiblePoints.lastIndex)
+                            if (selectedPoint != visiblePoints[index]) {
+                                selectedPoint = visiblePoints[index]
+                                onPointSelected(visiblePoints[index])
+                            }
+                        }
+                        select(down.position.x)
+                        down.consume()
+                        do {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (change.pressed) select(change.position.x)
+                            change.consume()
+                        } while (event.changes.any { it.id == down.id && it.pressed })
                     }
                 }
         ) {
@@ -186,6 +199,7 @@ internal fun BookLineChart(
             }
             offsets.forEachIndexed { index, offset ->
                 if (selectedPoint?.date == visiblePoints[index].date) {
+                    drawLine(primary.copy(alpha = 0.55f), Offset(offset.x, top), Offset(offset.x, bottom), strokeWidth = 2f)
                     drawCircle(primary.copy(alpha = 0.24f), radius = 16f, center = offset)
                     drawCircle(primary, radius = 9f, center = offset)
                 } else {

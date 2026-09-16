@@ -1,5 +1,7 @@
 package com.roinur.booktracker
 
+import com.roinur.booktracker.data.media.BookCoverCache
+
 import androidx.compose.material3.Text
 
 import android.app.Activity
@@ -70,6 +72,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asImageBitmap
@@ -667,7 +670,8 @@ internal fun ThumbnailImage(
     contentDescription: String,
     onClick: (() -> Unit)? = null,
     contentScale: ContentScale = ContentScale.Crop,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    persistCover: Boolean = false
 ) {
     val context = LocalContext.current
     val initialBitmap = ThumbnailBitmapCache.get(thumbnailUrl)
@@ -688,9 +692,9 @@ internal fun ThumbnailImage(
 
         value = null to false
         val fetched = withContext(Dispatchers.IO) {
-            fetchThumbnailBitmap(
-                url = thumbnailUrl
-            )
+            if (persistCover && (thumbnailUrl.startsWith("https://") || thumbnailUrl.startsWith("http://"))) {
+                runCatching { BookCoverCache.get(context).load(thumbnailUrl)?.asImageBitmap() }.getOrNull()
+            } else fetchThumbnailBitmap(url = thumbnailUrl)
         }
         if (fetched != null) {
             ThumbnailBitmapCache.put(thumbnailUrl, fetched)
@@ -1087,9 +1091,15 @@ internal fun accentColorForMode(mode: AccentMode): Color? {
     return ACCENT_PICKER_OPTIONS.firstOrNull { it.mode == mode }?.color
 }
 
+internal fun contrastRatio(a: Color, b: Color): Float {
+    val light = maxOf(a.luminance(), b.luminance())
+    val dark = minOf(a.luminance(), b.luminance())
+    return (light + 0.05f) / (dark + 0.05f)
+}
+
 internal fun preferredOnAccent(color: Color): Color {
-    val lum = (0.299f * color.red) + (0.587f * color.green) + (0.114f * color.blue)
-    return if (lum >= 0.62f) Color(0xFF111111) else Color.White
+    val dark = Color(0xFF111111)
+    return if (contrastRatio(color, dark) >= contrastRatio(color, Color.White)) dark else Color.White
 }
 
 internal fun applyAccentMode(
@@ -1097,17 +1107,27 @@ internal fun applyAccentMode(
     accentMode: AccentMode,
     isDark: Boolean
 ): ColorScheme {
-    val accent = accentColorForMode(accentMode) ?: return baseScheme
+    val requested = accentColorForMode(accentMode) ?: return baseScheme
+    // Accent text also appears directly on surfaces. Keep it readable there.
+    var accent = requested
+    val destination = if (isDark) Color.White else Color.Black
+    for (step in 0..100) {
+        accent = androidx.compose.ui.graphics.lerp(requested, destination, step / 100f)
+        if (contrastRatio(accent, baseScheme.surface) >= 4.5f &&
+            contrastRatio(accent, baseScheme.background) >= 4.5f) break
+    }
     val onAccent = preferredOnAccent(accent)
-    val container = accent.copy(alpha = if (isDark) 0.34f else 0.22f)
+    // Opaque containers have predictable contrast, unlike translucent colors
+    // inheriting unrelated dynamic-theme foregrounds.
+    val container = androidx.compose.ui.graphics.lerp(baseScheme.surface, accent, if (isDark) 0.24f else 0.12f)
+    val onContainer = preferredOnAccent(container)
     return baseScheme.copy(
-        primary = accent,
-        onPrimary = onAccent,
-        secondary = accent,
-        tertiary = accent,
-        primaryContainer = container,
-        secondaryContainer = container,
-        tertiaryContainer = container
+        primary = accent, onPrimary = onAccent,
+        secondary = accent, onSecondary = onAccent,
+        tertiary = accent, onTertiary = onAccent,
+        primaryContainer = container, onPrimaryContainer = onContainer,
+        secondaryContainer = container, onSecondaryContainer = onContainer,
+        tertiaryContainer = container, onTertiaryContainer = onContainer
     )
 }
 

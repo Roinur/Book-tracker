@@ -28,8 +28,9 @@ An Android reading journal for books, reading sessions, notes and personal goals
 - Automatically saved reading notes, global note search and copying notes in date order.
 - Daily and monthly time/page goals, yearly book goals, heatmaps and reading trends.
 - Historical sessions can count toward lifetime totals while being excluded from dated statistics.
-- ISBN scanning, metadata lookup, cover search and local cover selection.
-- Verified JSON backups with preserved original import data.
+- ISBN scanning and metadata from Open Library, Google Books and Libris, with missing fields filled across matching editions.
+- Cover search by ISBN, title or author, optional Google Images search, and local cover selection.
+- Verified JSON backups with embedded covers, recovery copies and preserved original import data.
 
 ## Install and update
 
@@ -37,7 +38,7 @@ Download the signed APK from [GitHub Releases](https://github.com/Roinur/Book-Tr
 
 Install an update over the existing app. **Do not uninstall or clear storage to update.** Android requires the same application ID and signing key. Export a backup in Settings and keep a copy outside the phone.
 
-Version 1.0 uses Android version code 35 so it can update the earlier development releases. The application ID remains `com.roinur.booktracker`.
+The application ID is `com.roinur.booktracker`.
 
 ## Build
 
@@ -69,7 +70,7 @@ The first build needs internet access. No private export, signing key or local S
 
 ## Data and privacy
 
-Library records, notes and active-session state are local. Android system backup may also copy app data depending on device settings. Metadata/cover searches contact Open Library or Google Books and send the search terms. Camera barcode processing uses ML Kit; its SDK may send operational metrics to Google. See [privacy](PRIVACY.md).
+Library records, notes and active-session state are local. Android system backup may also copy app data depending on device settings. Metadata and cover searches send search terms to Open Library, Google Books or Libris. Optional Google Images search opens Google's website inside the app. Camera barcode processing uses ML Kit; its SDK may send operational metrics to Google. See [privacy](PRIVACY.md).
 
 See [data compatibility](DATA_COMPATIBILITY.md) before changing storage or import code and [architecture](ARCHITECTURE.md) for the source layout.
 

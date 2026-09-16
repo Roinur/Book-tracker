@@ -2,6 +2,13 @@
 
 ## 1.0
 
+- Added optional Google Images cover selection and ISBN cover searches.
+- Combine matching ISBN metadata from Open Library, Google Books and Libris, including Swedish page counts.
+- Preserve filled-in book fields when fetching metadata again.
+- Include local covers in backups and keep recovery copies before important changes.
+- Added a page calculator and improved note editing with the keyboard open.
+- Refreshed navigation, interactive graphs and documentation screenshots.
+
 - Continue reading follows the most recent session across the full library.
 - Swipe left starts a reading session; swipe right pins or unpins.
 - ISBN camera preview uses a square center crop without side bars.

@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
@@ -93,6 +95,8 @@ internal fun BookManualLogDialog(
             modifier = Modifier
                 .padding(18.dp)
                 .fillMaxWidth()
+                .imePadding()
+                .heightIn(max = 720.dp)
                 .clip(RoundedCornerShape(8.dp))
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
@@ -172,8 +176,9 @@ internal fun BookManualLogDialog(
                     value = noteDraft,
                     onValueChange = { noteDraft = it },
                     label = { Text(kind.prompt) },
-                    minLines = 4,
-                    modifier = Modifier.fillMaxWidth()
+                    minLines = 1,
+                    maxLines = 12,
+                    modifier = Modifier.fillMaxWidth().weight(1f, fill = false)
                 )
                 Button(
                     onClick = { onSaveNote(kind, dateDraft, notePageDraft, "0", noteDraft) },

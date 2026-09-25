@@ -22,6 +22,8 @@ An Android reading journal for books, reading sessions, notes and personal goals
 ## Features
 
 - Library list and gallery, collections, pinned books, search and manual reading status.
+- Sort by total pages, title, author, rating or progress; deselect sorting to use date-added order. New books start as Not started.
+- Light, dark and adaptive themes, selectable accent colours and an optional Extra dark setting.
 - Tap an author in Book details to search your entire library for that author.
 - Reading timer with pause/resume, manual sessions and durations longer than 24 hours. Continue reading follows your latest session, independent of library filters.
 - Swipe left to start reading; swipe right to pin or unpin.

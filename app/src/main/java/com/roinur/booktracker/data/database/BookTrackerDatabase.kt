@@ -185,7 +185,7 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
             existing.id
         } else {
             values.put("added_at", now)
-            values.put("status", BookStatus.READING.name)
+            values.put("status", BookStatus.WISHLIST.name)
             writableDatabase.insert("books", null, values).toInt()
         }
     }
@@ -206,6 +206,7 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
         val direction = if (sortDescending) "DESC" else "ASC"
         val sortExpr = when (sortField) {
             BookSortField.ADDED -> "added_at $direction, id $direction"
+            BookSortField.PAGES -> "page_count $direction, added_at DESC"
             BookSortField.TITLE -> "lower(title) $direction, id DESC"
             BookSortField.AUTHOR -> "lower(authors) $direction, lower(title) ASC"
             BookSortField.RATING -> "rating $direction, added_at DESC"

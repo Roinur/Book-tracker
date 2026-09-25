@@ -2,6 +2,11 @@
 
 ## 1.0
 
+- Added an optional Extra dark setting while keeping the existing light, dark and adaptive themes.
+- Sort books by total pages. Deselect the active sort to return to date-added order.
+- New books start as Not started.
+- Prefill cover search with the book's ISBN when available, otherwise its title and author.
+
 - Added optional Google Images cover selection and ISBN cover searches.
 - Combine matching ISBN metadata from Open Library, Google Books and Libris, including Swedish page counts.
 - Preserve filled-in book fields when fetching metadata again.

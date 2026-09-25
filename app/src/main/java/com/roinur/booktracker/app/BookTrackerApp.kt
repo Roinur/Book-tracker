@@ -57,7 +57,22 @@ internal fun BookTrackerApp(vm: BookTrackerViewModel) {
     } else {
         fallbackScheme
     }
-    val colorScheme = applyAccentMode(baseScheme, vm.accentMode, useDark)
+    val backgroundScheme = if (useDark && vm.extraDark) baseScheme.copy(
+        background = Color(0xFF0B0A12),
+        onBackground = Color(0xFFE5E1EF),
+        surface = Color(0xFF14121E),
+        onSurface = Color(0xFFE5E1EF),
+        onSurfaceVariant = Color(0xFFB9B3CC),
+        surfaceVariant = Color(0xFF201D2C),
+        surfaceContainerLowest = Color(0xFF09080F),
+        surfaceContainerLow = Color(0xFF11101A),
+        surfaceContainer = Color(0xFF181620),
+        surfaceContainerHigh = Color(0xFF211E2B),
+        surfaceContainerHighest = Color(0xFF2A2735),
+        outline = Color(0xFF716A83),
+        outlineVariant = Color(0xFF302B40)
+    ) else baseScheme
+    val colorScheme = applyAccentMode(backgroundScheme, vm.accentMode, useDark)
     MaterialTheme(colorScheme = colorScheme) {
         ApplySystemBars(
             darkContent = !useDark,

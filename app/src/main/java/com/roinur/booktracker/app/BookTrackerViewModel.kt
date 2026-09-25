@@ -117,6 +117,8 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
 
     var themeMode by mutableStateOf(loadThemeMode())
         private set
+    var extraDark by mutableStateOf(prefs.getBoolean("extra_dark", false))
+        private set
     var accentMode by mutableStateOf(loadAccentMode())
         private set
     var isbnInput by mutableStateOf("")
@@ -316,6 +318,11 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         reload()
     }
 
+    fun updateExtraDark(enabled: Boolean) {
+        extraDark = enabled
+        prefs.edit().putBoolean("extra_dark", enabled).apply()
+    }
+
     fun cycleThemeMode() {
         themeMode = when (themeMode) {
             ThemeMode.SYSTEM -> ThemeMode.DARK
@@ -347,7 +354,8 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
 
     fun toggleSort(field: BookSortField) {
         if (sortField == field) {
-            sortDescending = !sortDescending
+            sortField = BookSortField.ADDED
+            sortDescending = true
         } else {
             sortField = field
             sortDescending = field != BookSortField.TITLE && field != BookSortField.AUTHOR

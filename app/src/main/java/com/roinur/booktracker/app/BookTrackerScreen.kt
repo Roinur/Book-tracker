@@ -678,8 +678,8 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                 coverSearchTargetName = target.name
                 coverTargetName = null
                 val defaultQuery = when (target) {
-                    BookCoverTarget.DRAFT -> listOf(vm.titleInput, vm.authorsInput).filter { it.isNotBlank() }.joinToString(" ")
-                    BookCoverTarget.SELECTED -> selectedBook?.let { listOf(it.title, it.authors).filter { value -> value.isNotBlank() }.joinToString(" ") }.orEmpty()
+                    BookCoverTarget.DRAFT -> vm.isbnInput.trim().ifBlank { listOf(vm.titleInput, vm.authorsInput).filter { it.isNotBlank() }.joinToString(" ") }
+                    BookCoverTarget.SELECTED -> selectedBook?.let { it.isbn.trim().ifBlank { listOf(it.title, it.authors).filter { value -> value.isNotBlank() }.joinToString(" ") } }.orEmpty()
                 }
                 vm.prepareCoverSearch(defaultQuery)
                 showCoverSearch = true

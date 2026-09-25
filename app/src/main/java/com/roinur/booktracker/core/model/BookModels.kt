@@ -64,6 +64,7 @@ enum class BookStatus(val label: String) {
 
 enum class BookSortField(val label: String) {
     ADDED("Added"),
+    PAGES("Pages"),
     TITLE("Title"),
     AUTHOR("Author"),
     RATING("Rating"),

@@ -255,7 +255,7 @@ internal fun BookLibraryHeader(
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
-                BookSortField.entries.forEach { field ->
+                BookSortField.entries.filter { it != BookSortField.ADDED }.forEach { field ->
                     val selected = vm.sortField == field
                     val shape = RoundedCornerShape(10.dp)
                     Box(

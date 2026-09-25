@@ -6,6 +6,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
+import androidx.compose.ui.Alignment
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -33,6 +35,12 @@ internal fun BookSettingsContent(
 ) {
     var recoveryExpanded by rememberSaveable { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        BookSectionCard {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Extra dark", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Switch(checked = vm.extraDark, onCheckedChange = vm::updateExtraDark)
+            }
+        }
         BookSettingsActionPanel(
             vm = vm,
             onImport = onImport,

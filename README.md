@@ -46,6 +46,8 @@ Install an update over the existing app. **Do not uninstall or clear storage to 
 
 The application ID is `com.roinur.booktracker`.
 
+Release history: [1.0](https://github.com/Roinur/Book-tracker/releases/tag/v1.0) preserves the original first release (Android build 33). [1.1](https://github.com/Roinur/Book-tracker/releases/tag/v1.1) includes all later additions through build 72. See the [changelog](CHANGELOG.md).
+
 ## Build
 
 Requirements: JDK 17, Android SDK platform 34 and Build Tools 34.0.0. Open this directory in Android Studio and let Gradle resolve dependencies, or configure `ANDROID_HOME` / an ignored `local.properties` file.

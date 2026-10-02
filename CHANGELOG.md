@@ -2,6 +2,8 @@
 
 ## 1.1
 
+Version 1.1 (Android build 72) includes all changes since the original 1.0 release (build 33). Later APKs previously uploaded under 1.0 are part of this update.
+
 - Added per-book goals: finish within days, weeks or months, or read a chosen number of pages each day.
 - Swipe the Pages read card to view and configure a book goal. Active goals appear first, with today's remaining pages, estimated time and projected finish.
 - Book goals have their own ongoing notifications and are included in native backups.
@@ -14,8 +16,6 @@
 - Refreshed cover selection and improved collection edit navigation, scrolling and selection feedback.
 - Cached covers locally and refined backup and recovery handling.
 - Added spacing between the Pages read and Book goal swipe pages, with rounded progress bars.
-
-## 1.0
 
 - Added an optional Extra dark setting while keeping the existing light, dark and adaptive themes.
 - Sort books by total pages. Deselect the active sort to return to date-added order.
@@ -33,6 +33,19 @@
 - Swipe left starts a reading session; swipe right pins or unpins.
 - ISBN camera preview uses a square center crop without side bars.
 - Replaced documentation screenshots with user-provided captures.
+
+## 1.0
+
+Original first release, Android build 33.
+
+- Library list and gallery, search, collections, pinned books, ratings and manual reading status.
+- Reading timer, pause and resume, countdown, manual sessions and durations longer than 24 hours.
+- Automatically saved and editable notes, global note search and copying book notes in date order.
+- Daily and monthly pages/time goals, yearly book goals, heatmaps and reading trends.
+- Historical sessions can remain in lifetime totals while being excluded from dated statistics.
+- ISBN scanning, metadata and cover searches from Open Library and Google Books, and local cover selection.
+- Verified JSON backups, automatic backups and preserved original import data.
+- Light, dark and adaptive themes with accent colours.
 
 - Use the device local timezone consistently for daily statistics, heatmaps, streaks and period boundaries.
 - Aggregate graph minutes after summing session durations, matching daily totals.

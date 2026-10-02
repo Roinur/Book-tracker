@@ -117,8 +117,14 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
     val coverTarget = coverTargetName?.let { runCatching { BookCoverTarget.valueOf(it) }.getOrNull() }
     val coverSearchTarget = coverSearchTargetName?.let { runCatching { BookCoverTarget.valueOf(it) }.getOrNull() }
     val activeBook = vm.statsBooks.firstOrNull { it.id == vm.activeBookId }
-    val visibleLibraryBooks = vm.books.filter { vm.libraryFilter.matches(it, vm.activeBookId) && vm.matchesCollectionFilter(it) }
-    val fallbackBook = mostRecentlyReadBook(vm.statsBooks, vm.allBookSessions, vm.activeBookId)
+    val visibleLibraryBooks by remember(vm) { androidx.compose.runtime.derivedStateOf {
+        vm.books.filter { vm.libraryFilter.matches(it, vm.activeBookId) && vm.matchesCollectionFilter(it) }
+    } }
+    val libraryColumns = if (vm.galleryMode) vm.galleryColumns.coerceIn(1, 5) else 1
+    val libraryRows = remember(visibleLibraryBooks, libraryColumns) { visibleLibraryBooks.chunked(libraryColumns) }
+    val fallbackBook by remember(vm) { androidx.compose.runtime.derivedStateOf {
+        mostRecentlyReadBook(vm.statsBooks, vm.allBookSessions, vm.activeBookId)
+    } }
     val selectedBook = vm.statsBooks.firstOrNull { it.id == vm.selectedBookId } ?: fallbackBook
     val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
@@ -289,10 +295,12 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
         }
     }
 
-    LaunchedEffect(vm.activeBookId, vm.countdownEndMs, vm.bookGoals.isNotEmpty()) {
+    LaunchedEffect(vm.activeBookId, vm.activePausedAtMs, vm.countdownEndMs, vm.bookGoals.isNotEmpty()) {
         while (vm.activeBookId != null || vm.countdownEndMs > System.currentTimeMillis() || vm.bookGoals.isNotEmpty()) {
             nowMs = System.currentTimeMillis()
-            delay(1000L)
+            val runningTimer = (vm.activeBookId != null && vm.activePausedAtMs <= 0L) ||
+                vm.countdownEndMs > System.currentTimeMillis()
+            delay(if (runningTimer) 1000L else 60_000L)
         }
     }
 
@@ -604,28 +612,29 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                                 }
                             } else if (vm.collectionEditing) {
                                 val columns = if (vm.galleryMode) vm.galleryColumns.coerceIn(1, 5) else 1
-                                val rows = visibleLibraryBooks.chunked(columns)
-                                items(rows.size, key = { "collection_edit_$it" }) { index ->
+                                val rows = libraryRows
+                                items(rows.size, key = { "collection_edit_${rows[it].first().id}" },
+                                    contentType = { if (vm.galleryMode) "book_gallery_row" else "book_row" }) { index ->
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        rows[index].forEach { book ->
+                                        rows[index].forEach { book -> androidx.compose.runtime.key(book.id) {
                                             BookCollectionBookCard(book, book.id in vm.collectionSelectedBooks,
                                                 vm.galleryMode, Modifier.weight(1f),
                                                 vm.collectionSelection.previewCollections(book, vm.collectionSuggestions),
                                                 hideTitle = vm.galleryHideTitle) {
                                                 vm.toggleCollectionBook(book.id)
                                             }
-                                        }
+                                        } }
                                         repeat(columns - rows[index].size) { Spacer(Modifier.weight(1f)) }
                                     }
                                 }
                             } else if (vm.galleryMode) {
-                                val rows = visibleLibraryBooks.chunked(vm.galleryColumns.coerceIn(1, 5))
-                                items(rows.size, key = { index -> "gallery_$index" }, contentType = { "book_gallery_row" }) { rowIndex ->
+                                val rows = libraryRows
+                                items(rows.size, key = { index -> "gallery_${rows[index].first().id}" }, contentType = { "book_gallery_row" }) { rowIndex ->
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        rows[rowIndex].forEach { book ->
+                                        rows[rowIndex].forEach { book -> androidx.compose.runtime.key(book.id) {
                                             BookGalleryTile(
                                                 book = book,
                                                 selected = book.id == vm.selectedBookId,
@@ -644,7 +653,7 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                                                 onRatingCancel = { holdPopup = null },
                                                 hideTitle = vm.galleryHideTitle
                                             )
-                                        }
+                                        } }
                                         repeat(vm.galleryColumns.coerceIn(1, 5) - rows[rowIndex].size) {
                                             Spacer(modifier = Modifier.weight(1f))
                                         }

@@ -2,10 +2,9 @@ package com.roinur.booktracker
 
 import androidx.compose.material3.Text
 
-import android.graphics.BitmapFactory
-import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +15,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -23,16 +23,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.BlurredEdgeTreatment
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -40,9 +44,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.semantics.contentDescription
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.util.Locale
+import kotlin.math.roundToInt
+import com.roinur.booktracker.data.media.BookCoverThumbnails
 
 @Composable
 internal fun BookCover(book: BookRow, modifier: Modifier = Modifier) {
@@ -61,24 +65,16 @@ internal fun BookCoverImage(
 
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
-    frostedBottomHeight: Dp = 0.dp
+    frostedBottomHeight: Dp = 0.dp,
+    maxDimensionPx: Int = 1024
 ) {
     val context = LocalContext.current
-    val localBitmap by produceState<ImageBitmap?>(initialValue = null, coverUrl) {
-        value = null
-        if (coverUrl.isNotBlank()) {
-            value = withContext(Dispatchers.IO) {
-                runCatching {
-                    val restored = com.roinur.booktracker.data.backup.BookPortableCovers.file(context, coverUrl)
-                    val stream = if (restored.isFile) restored.inputStream()
-                        else if (coverUrl.startsWith("content://") || coverUrl.startsWith("file://")) context.contentResolver.openInputStream(Uri.parse(coverUrl))
-                        else null
-                    stream?.use { input ->
-                        BitmapFactory.decodeStream(input)?.asImageBitmap()
-                    }
-                }.getOrNull()
-            }
-        }
+    val thumbnailSize = maxDimensionPx.coerceIn(96, 1536)
+    val localBitmap by produceState<ImageBitmap?>(
+        initialValue = BookCoverThumbnails.cached(coverUrl, thumbnailSize), coverUrl, thumbnailSize
+    ) {
+        value = BookCoverThumbnails.cached(coverUrl, thumbnailSize)
+        if (coverUrl.isNotBlank()) value = BookCoverThumbnails.load(context, coverUrl, thumbnailSize)
     }
     when {
         localBitmap != null -> {
@@ -91,15 +87,11 @@ internal fun BookCoverImage(
             )
         }
         coverUrl.isNotBlank() -> {
-        ThumbnailImage(
-            thumbnailUrl = coverUrl,
-            persistCover = true,
-
-            contentDescription = "Cover for $title",
-            modifier = modifier,
-            contentScale = contentScale,
-                frostedBottomHeight = frostedBottomHeight
-        )
+            Box(modifier.clip(MaterialTheme.shapes.small).background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center) {
+                Text("No preview", style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         else -> Box(
             modifier = modifier
@@ -123,12 +115,24 @@ internal fun BookCoverArtwork(
     bitmap: ImageBitmap, contentDescription: String?, modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop, frostedBottomHeight: Dp = 0.dp
 ) {
-    Box(modifier) {
+    var artworkSize by remember { mutableStateOf(IntSize.Zero) }
+    Box(modifier.onSizeChanged { artworkSize = it }) {
         Image(bitmap, contentDescription, Modifier.fillMaxSize(), contentScale = contentScale)
         if (frostedBottomHeight > 0.dp) {
-            Image(bitmap, null, Modifier.fillMaxSize().drawWithContent {
-                clipRect(top = (size.height - frostedBottomHeight.toPx()).coerceAtLeast(0f)) { this@drawWithContent.drawContent() }
-            }.blur(12.dp, edgeTreatment = BlurredEdgeTreatment.Rectangle), contentScale = contentScale)
+            // Keep the blur layer as small as the footer, using the same crop as the sharp cover.
+            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(frostedBottomHeight).clipToBounds()) {
+                Canvas(Modifier.fillMaxSize().blur(12.dp, edgeTreatment = BlurredEdgeTreatment.Rectangle)) {
+                    // Read measured size during drawing, so measurement does not recompose each tile.
+                    if (artworkSize.height <= 0) return@Canvas
+                    val factor = contentScale.computeScaleFactor(Size(bitmap.width.toFloat(), bitmap.height.toFloat()),
+                        Size(artworkSize.width.toFloat(), artworkSize.height.toFloat()))
+                    val width = (bitmap.width * factor.scaleX).roundToInt()
+                    val height = (bitmap.height * factor.scaleY).roundToInt()
+                    drawImage(bitmap, dstSize = IntSize(width, height), dstOffset = IntOffset(
+                        (artworkSize.width - width) / 2,
+                        ((artworkSize.height - height) / 2f - artworkSize.height + size.height).roundToInt()))
+                }
+            }
         }
     }
 }

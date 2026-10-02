@@ -8,6 +8,7 @@ Kotlin sources live under `app/src/main/java/com/roinur/booktracker` with the ap
 - `data/stats`: read-only statistics queries and aggregation, in its own Kotlin package.
 - `data/imports`: legacy import conversion, original archives and native backup validation.
 - `data/lookup`, `data/media`: metadata lookup and local cover storage.
+- `data/media/BookCoverThumbnails`: sampled, display-sized cover decoding with a byte-bounded memory cache and limited concurrent loads. These display copies do not replace the stored cover files.
 - `background`: the reading timer foreground service and separate book-goal notifications. Goals use a daily alarm and boot/time-change receivers rather than another continuously running service.
 - `feature`: books, library, reading, notes, stats and settings screens.
 - `core`: models, formatting, shared UI and trend algorithms.

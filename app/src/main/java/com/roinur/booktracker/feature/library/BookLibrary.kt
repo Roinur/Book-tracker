@@ -557,6 +557,12 @@ internal fun BookGalleryTile(
     val density = LocalDensity.current
     var frostHeight by remember(book.id) { mutableStateOf(0.dp) }
     val dense = maxWidth < 100.dp
+    val coverDimensionPx = with(density) { (maxWidth / 0.8f).toPx() }
+    val coverSize = when {
+        coverDimensionPx <= 384f -> 384
+        coverDimensionPx <= 640f -> 640
+        else -> 1536
+    }
     val spacing = if (dense) 2.dp else if (compact) 3.dp else 7.dp
     val titleStyle = if (dense) MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp, lineHeight = 14.sp) else MaterialTheme.typography.titleSmall
     val metadataStyle = if (dense) MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, lineHeight = 13.sp) else MaterialTheme.typography.bodySmall
@@ -571,7 +577,7 @@ internal fun BookGalleryTile(
         ),
         modifier = Modifier.fillMaxWidth()
             .height(maxWidth / 0.8f)
-            .onGloballyPositioned { widthPx = it.size.width.toFloat().coerceAtLeast(1f) }
+            .onSizeChanged { widthPx = it.width.toFloat().coerceAtLeast(1f) }
             .pointerInput(book.id, widthPx, collectionsPreview) {
                     if (collectionsPreview != null) return@pointerInput
                 detectDragGesturesAfterLongPress(
@@ -602,7 +608,8 @@ internal fun BookGalleryTile(
     ) {
         Box(Modifier.fillMaxSize()) {
             BookCoverImage(book.coverUrl, book.title, Modifier.matchParentSize(),
-                contentScale = ContentScale.Crop, frostedBottomHeight = frostHeight)
+                contentScale = ContentScale.Crop, frostedBottomHeight = frostHeight,
+                maxDimensionPx = coverSize)
             Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()
                 .onSizeChanged { frostHeight = with(density) { it.height.toDp() } }
                 .background(Brush.verticalGradient(listOf(

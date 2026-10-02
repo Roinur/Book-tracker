@@ -2,7 +2,9 @@
 
 ## 1.1
 
-Version 1.1 (Android build 72) includes all changes since the original 1.0 release (build 33). Later APKs previously uploaded under 1.0 are part of this update.
+Version 1.1 (Android build 73) includes all changes since the original 1.0 release (build 33). Later APKs previously uploaded under 1.0 are part of this update.
+
+- Gallery scrolling uses display-sized cover copies, a bounded memory cache, coalesced image loads and a smaller footer blur layer. Original covers remain available for details and backups.
 
 - Added per-book goals: finish within days, weeks or months, or read a chosen number of pages each day.
 - Swipe the Pages read card to view and configure a book goal. Active goals appear first, with today's remaining pages, estimated time and projected finish.

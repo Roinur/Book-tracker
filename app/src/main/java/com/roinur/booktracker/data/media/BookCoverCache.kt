@@ -51,6 +51,15 @@ internal class BookCoverCache(private val directory: File, private val download:
         return bitmap
     }
 
+    fun loadThumbnail(url: String, size: Int): Bitmap? {
+        val file = File(directory, name(url))
+        if (file.isFile) {
+            runCatching { decodeCoverThumbnail(size) { file.inputStream() } }.getOrNull()?.let { return it }
+        }
+        // First download still stores the original, not the smaller gallery copy.
+        return load(url)?.let { scaledCoverThumbnail(it, size) }
+    }
+
     companion object {
         @Volatile private var instance: BookCoverCache? = null
         fun get(context: Context): BookCoverCache = instance ?: synchronized(this) {

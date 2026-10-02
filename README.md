@@ -46,7 +46,7 @@ Install an update over the existing app. **Do not uninstall or clear storage to 
 
 The application ID is `com.roinur.booktracker`.
 
-Release history: [1.0](https://github.com/Roinur/Book-tracker/releases/tag/v1.0) preserves the original first release (Android build 33). [1.1](https://github.com/Roinur/Book-tracker/releases/tag/v1.1) includes all later additions through build 72. See the [changelog](CHANGELOG.md).
+Release history: [1.0](https://github.com/Roinur/Book-tracker/releases/tag/v1.0) preserves the original first release (Android build 33). [1.1](https://github.com/Roinur/Book-tracker/releases/tag/v1.1) includes all later additions and gallery scrolling improvements. See the [changelog](CHANGELOG.md).
 
 ## Build
 

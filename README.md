@@ -31,12 +31,15 @@ An Android reading journal for books, reading sessions, notes and personal goals
 - Reading timer with pause/resume, manual sessions and durations longer than 24 hours. Continue reading follows your latest session, independent of library filters.
 - Swipe left to start reading; swipe right to pin or unpin.
 - Automatically saved reading notes, global note search and copying notes in date order.
-- Daily and monthly time/page goals, yearly book goals, heatmaps and reading trends.
+- Daily and monthly time/page goals, yearly book goals, heatmaps and reading progress summaries.
+- Reading trends compares authors or collections over Today, Week, Month, Year or All time. Choose Pages, Time or Sessions, compare totals or share, and inspect positive ratings or average ratings.
+- Interactive Stats and book graphs: hold and drag to inspect points. Stats keeps the same sizing across periods and fits the available screen area.
 - Per-book deadlines or daily page targets, with today's remaining pages, estimated reading time and finish date. Swipe the Pages read card to set a goal. Active goals have a separate ongoing notification. Time estimates use book pace, then publisher pace, then overall pace.
 - Historical sessions can count toward lifetime totals while being excluded from dated statistics.
 - ISBN scanning and metadata from Open Library, Google Books and Libris, with missing fields filled across matching editions.
 - Cover search by ISBN, title or author, optional Google Images search, and local cover selection.
-- Verified JSON backups with embedded covers, recovery copies and preserved original import data.
+- Page calculator for session logs in compendiums and editions with different page numbering.
+- Verified JSON backups with embedded covers, collection types and book goals. Check a backup before restoring, export local recovery copies and inspect preserved original import data.
 
 ## Install and update
 

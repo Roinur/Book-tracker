@@ -66,6 +66,13 @@ internal fun BookDetailCard(
     onCompletionDate: (LocalDate) -> Unit,
     modifier: Modifier = Modifier,
     book: BookRow,
+    bookGoal: BookGoal?,
+    goalOpenRequest: Int,
+    allGoalSessions: List<BookReadingSessionRow>,
+    allPaceBooks: List<BookRow>,
+    collectionTypes: Map<String, BookCollectionType>,
+    onSaveGoal: (BookGoal, (Boolean) -> Unit) -> Unit,
+    onRemoveGoal: ((Boolean) -> Unit) -> Unit,
     active: Boolean,
     activeStartedAtMs: Long,
     activePausedAtMs: Long,
@@ -86,18 +93,23 @@ internal fun BookDetailCard(
     onAddManual: () -> Unit,
     onOpenGraph: () -> Unit
 ) {
+    var showBookGoal by rememberSaveable(book.id) { mutableStateOf(false) }
+    val goalToday = Instant.ofEpochMilli(nowMs).atZone(ZoneId.systemDefault()).toLocalDate()
+    val goalProgress = remember(book, bookGoal, allGoalSessions, goalToday, allPaceBooks, collectionTypes) {
+        bookGoal?.let { bookGoalProgress(book, it, allGoalSessions, goalToday, books = allPaceBooks, collectionTypes = collectionTypes) }
+    }
+    if (showBookGoal) BookGoalDialog(book, bookGoal, allGoalSessions, allPaceBooks, collectionTypes, onSaveGoal, onRemoveGoal,
+        onDismiss = { showBookGoal = false })
     val liveSeconds = if (active) {
         bookActiveElapsedSeconds(activeStartedAtMs, nowMs, activePausedAtMs, activePausedTotalMs)
     } else {
         0L
     }
     val totalSeconds = book.readingSeconds + liveSeconds
-    val sessionPages = sessions.sumOf { it.pagesRead.coerceAtLeast(0) }
-    val bookPagesPerHour = if (totalSeconds > 0L) {
-        ((if (sessionPages > 0) sessionPages else book.currentPage.coerceAtLeast(0)).toFloat() * 3600f) / totalSeconds.toFloat()
-    } else {
-        0f
+    val readingPace = remember(book, allGoalSessions, allPaceBooks, collectionTypes) {
+        bookReadingPace(book, allGoalSessions, allPaceBooks, collectionTypes)
     }
+    val bookPagesPerHour = readingPace.pagesPerHour?.toFloat() ?: 0f
     val bookCollections = remember(book.collections) { splitBookCollections(book.collections) }
     var showCollectionsDialog by rememberSaveable { mutableStateOf(false) }
     Column(
@@ -224,29 +236,7 @@ internal fun BookDetailCard(
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-            BookPanel(
-                modifier = Modifier.weight(1f).height(120.dp),
-                contentPadding = PaddingValues(9.dp),
-                contentSpacing = 0.dp
-            ) {
-                Spacer(Modifier.weight(1f))
-                BookMetricLabel(R.drawable.ic_book_24, "Pages read")
-                Spacer(Modifier.weight(1f))
-                Text(
-                    text = if (book.pageCount > 0) "${book.currentPage} / ${book.pageCount}" else "${book.currentPage}",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(Modifier.weight(1f))
-                LinearProgressIndicator(
-                    progress = { book.progressFraction },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(4.dp)
-                        .clip(RoundedCornerShape(99.dp))
-                )
-                Spacer(Modifier.weight(1f))
-            }
+            BookGoalCard(book, bookGoal, goalProgress, onConfigure = { showBookGoal = true }, modifier = Modifier.weight(1f), openRequest = goalOpenRequest)
             BookPanel(
                 modifier = Modifier
                     .weight(1f)
@@ -274,11 +264,19 @@ internal fun BookDetailCard(
                 Spacer(Modifier.weight(1f))
                 Text(
                     text = run {
-                        val valid = sessions.filter { it.pagesRead > 0 && it.durationSeconds > 0 }.take(20)
+                        val valid = sessions.filter { !it.excludeFromStatistics && it.pagesRead > 0 && it.durationSeconds > 0 }.take(20)
                         val averagePages = if (valid.isEmpty()) 0.0 else valid.map { it.pagesRead }.average()
                         val left = (book.pageCount - book.currentPage).coerceAtLeast(0)
                         val passes = if (averagePages > 0) kotlin.math.ceil(left / averagePages).toInt() else 0
-                        "${bookEstimateRemaining(book, totalSeconds)} left" + if (passes > 0 && book.status != BookStatus.FINISHED) " · ~$passes sessions" else ""
+                        val remaining = when {
+                            book.status == BookStatus.FINISHED -> "0m"
+                            book.pageCount <= 0 -> "-"
+                            left == 0 -> "0m"
+                            else -> readingPace.pagesPerHour?.let {
+                                bookFormatCompactHours(kotlin.math.ceil(left * 3600.0 / it).toLong())
+                            } ?: "-"
+                        }
+                        "$remaining left" + if (passes > 0 && book.status != BookStatus.FINISHED) " · ~$passes sessions" else ""
                     },
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

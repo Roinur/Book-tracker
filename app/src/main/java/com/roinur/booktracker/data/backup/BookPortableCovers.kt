@@ -19,22 +19,40 @@ internal object BookPortableCovers {
         val keep = urls.map { file(context, it).name }.toSet()
         File(context.filesDir, "portable_covers").listFiles()?.filter { it.isFile && it.name !in keep }?.forEach { it.delete() }
     }
-    fun export(context: Context, books: JSONArray): JSONArray {
+    fun export(context: Context, books: JSONArray, allowRemoteFetch: Boolean = true): JSONArray {
         val urls = (0 until books.length()).map { books.getJSONObject(it).optString("cover_url") }.filter { it.isNotBlank() }.distinct()
         return JSONArray().apply { urls.forEach { url ->
             val bytes = runCatching {
                 val restored = file(context, url)
-                if (restored.isFile) restored.inputStream().use(::readImage)
-                else if (url.startsWith("http://") || url.startsWith("https://")) {
-                    val bitmap = BookCoverCache.get(context).load(url) ?: error("Cover unavailable")
-                    compactBitmap(bitmap)
-                } else context.contentResolver.openInputStream(Uri.parse(url))?.use(::readImage) ?: error("Cover unavailable")
-            }.map { compactBytes(it) }.getOrNull()
+                val cached = if (restored.isFile) runCatching { restored.inputStream().use(::readImage) }.getOrNull() else null
+                if (cached != null && validImage(cached)) cached
+                else {
+                    if (restored.isFile) restored.delete()
+                    val compact = if (url.startsWith("http://") || url.startsWith("https://")) {
+                        val coverCache = BookCoverCache.get(context)
+                        val bitmap = (if (allowRemoteFetch) coverCache.load(url) else coverCache.loadCached(url))
+                            ?: error("Cover unavailable locally")
+                        try { compactBitmap(bitmap) } finally { bitmap.recycle() }
+                    } else compactBytes(context.contentResolver.openInputStream(Uri.parse(url))?.use(::readImage)
+                        ?: error("Cover unavailable"))
+                    if (validImage(compact)) runCatching { cachePortable(context, url, compact) }
+                    compact
+                }
+            }.getOrNull()
             val asset = JSONObject().put("url", url)
             if (bytes == null || !validImage(bytes)) asset.put("missing", true)
             else asset.put("sha256", LegacyMigration.hash(bytes)).put("data_base64", Base64.encodeToString(bytes, Base64.NO_WRAP))
             put(asset)
         } }
+    }
+    private fun cachePortable(context: Context, url: String, bytes: ByteArray) {
+        val target = file(context, url)
+        check(target.parentFile!!.isDirectory || target.parentFile!!.mkdirs())
+        val pending = File(target.parentFile, target.name + ".pending")
+        try {
+            FileOutputStream(pending).use { it.write(bytes) }
+            check(pending.renameTo(target)) { "Could not cache cover" }
+        } finally { pending.delete() }
     }
     private fun compactBytes(bytes: ByteArray): ByteArray {
         if (bytes.size <= 96 * 1024) return bytes

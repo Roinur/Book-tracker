@@ -48,4 +48,5 @@ class BookTrendDataTest {
         assertEquals(listOf(100f, 100f, 100f), trendValues(line, TrendScale.SHARE, TrendSignal.ALL).takeLast(3))
         assertEquals(0, line.points.last().matchingReads)
     }
+
 }

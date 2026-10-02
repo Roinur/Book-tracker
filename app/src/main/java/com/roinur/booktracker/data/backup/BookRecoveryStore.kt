@@ -10,7 +10,6 @@ internal data class BookRecoveryCopy(val name: String, val createdAt: Long, val 
 /** Private, verified checkpoints. Never rotates an old copy until the new one is durable. */
 internal class BookRecoveryStore(private val directory: File) {
     @Synchronized fun save(bytes: ByteArray, reason: String): BookRecoveryCopy {
-        LegacyMigration.previewTrackerBackup(bytes)
         check(directory.isDirectory || directory.mkdirs()) { "Could not create recovery folder." }
         val created = maxOf(System.currentTimeMillis(), (list().firstOrNull()?.createdAt ?: 0L) + 1L)
         val name = "${created}_${reason.replace(Regex("[^a-z-]"), "-")}_${UUID.randomUUID()}.json"

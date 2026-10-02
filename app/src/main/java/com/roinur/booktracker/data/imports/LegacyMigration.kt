@@ -9,6 +9,7 @@ import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.security.MessageDigest
 import java.time.Instant
+import java.util.Locale
 
 data class LegacyImportPreview(
     val source: ByteArray,
@@ -79,7 +80,7 @@ internal object LegacyMigration {
         val format = root.optString("format")
         require(format in setOf(BACKUP_FORMAT_V1, BACKUP_FORMAT_V2, BACKUP_FORMAT)) { "Unsupported backup format." }
         val allowed = mutableSetOf("format", "exported_at", "books", "reading_sessions", "reading_notes", "bookly_sources", "bookly_links")
-        if (format == BACKUP_FORMAT) allowed += setOf("reading_goals", "content_sha256", "integrity_sha256", "cover_assets")
+        if (format == BACKUP_FORMAT) allowed += setOf("reading_goals", "collection_types", "book_goals", "content_sha256", "integrity_sha256", "cover_assets")
         require(root.keys().asSequence().all { it in allowed }) { "Unknown backup sections; restore cancelled rather than discard data." }
         listOf("books", "reading_sessions", "reading_notes").forEach { name ->
             val array = root.getJSONArray(name)
@@ -91,6 +92,9 @@ internal object LegacyMigration {
         }
         if (format == BACKUP_FORMAT) {
             root.getJSONArray("reading_goals")
+            root.optJSONArray("collection_types")?.let { types ->
+                repeat(types.length()) { types.getJSONObject(it) }
+            }
             val contentHash = trackerContentHash(root)
             require(root.getString("content_sha256") == contentHash) { "Backup content checksum mismatch. Nothing imported." }
             require(root.getString("integrity_sha256") == trackerIntegrityHash(root)) { "Backup integrity checksum mismatch. Nothing imported." }
@@ -104,7 +108,7 @@ internal object LegacyMigration {
             bookCount = root.getJSONArray("books").length(),
             sessionCount = root.getJSONArray("reading_sessions").length(),
             noteCount = root.getJSONArray("reading_notes").length(),
-            goalCount = root.optJSONArray("reading_goals")?.length() ?: 0,
+            goalCount = (root.optJSONArray("reading_goals")?.length() ?: 0) + (root.optJSONArray("book_goals")?.length() ?: 0),
             legacyArchiveCount = root.optJSONArray("bookly_sources")?.length() ?: 0,
             fileSha256 = hash(bytes),
             contentSha256 = trackerContentHash(root),
@@ -115,6 +119,8 @@ internal object LegacyMigration {
     private fun trackerContentHash(root: JSONObject): String {
         val content = JSONObject()
         trackerSections.forEach { section -> content.put(section, root.optJSONArray(section) ?: JSONArray()) }
+        if (root.has("book_goals")) content.put("book_goals", root.getJSONArray("book_goals"))
+        if (root.has("collection_types")) content.put("collection_types", root.getJSONArray("collection_types"))
         if (root.has("cover_assets")) content.put("cover_assets", root.getJSONArray("cover_assets"))
         return hash(canonicalJson(content).toByteArray(Charsets.UTF_8))
     }
@@ -360,6 +366,16 @@ internal object LegacyMigration {
             preview(payload) to archive.getString("imported_at")
         }
         val backupLinks = if (root.optString("format") != BACKUP_FORMAT_V1) root.getJSONArray("bookly_links") else JSONArray()
+        val collectionTypes = root.optJSONArray("collection_types") ?: JSONArray()
+        val collectionTypeRows = (0 until collectionTypes.length()).map { collectionTypes.getJSONObject(it) }
+        collectionTypeRows.forEach { row ->
+            require(row.keys().asSequence().all { it in setOf("name", "kind") }) { "Unknown collection type fields; nothing imported." }
+            require(row.getString("name").isNotBlank() && ',' !in row.getString("name")) { "Invalid collection name; nothing imported." }
+            require(BookCollectionType.entries.any { it.name == row.getString("kind") }) { "Unknown collection type; nothing imported." }
+        }
+        require(collectionTypeRows.map { it.getString("name").lowercase(Locale.ROOT) }.distinct().size == collectionTypeRows.size) {
+            "Duplicate collection types; nothing imported."
+        }
         val tableColumns = linkedMapOf(
             "books" to setOf("id","isbn","title","authors","page_count","current_page","status","rating","notes","cover_url","source_url","collections","pinned","added_at","started_at","finished_at","finished_at_manual","last_read_at","reading_seconds"),
             "reading_sessions" to setOf("id","book_id","started_at","ended_at","duration_seconds","duration_milliseconds","pages_read","page_reached","exclude_from_statistics"),
@@ -367,6 +383,9 @@ internal object LegacyMigration {
         )
         if (root.has("reading_goals")) {
             tableColumns["reading_goals"] = setOf("id", "daily_minutes", "daily_pages", "yearly_books", "updated_at", "monthly_minutes", "monthly_pages", "daily_metric", "monthly_metric")
+        }
+        if (root.has("book_goals")) {
+            tableColumns["book_goals"] = setOf("id", "book_id", "mode", "daily_pages", "target_date", "created_date")
         }
         val prepared = tableColumns.mapValues { (table, columns) ->
             val entries = root.getJSONArray(table)
@@ -402,7 +421,13 @@ internal object LegacyMigration {
                             else -> throw IllegalArgumentException("Unsupported backup field $key; no changes saved.")
                         }
                     }
-                    if (table == "reading_sessions" || table == "reading_notes") {
+                    if (table == "book_goals") {
+                        require(row.getString("mode") in setOf("DEADLINE", "DAILY_PAGES")) { "Unknown book goal mode" }
+                        java.time.LocalDate.parse(row.getString("created_date"))
+                        if (row.getString("mode") == "DEADLINE") java.time.LocalDate.parse(row.getString("target_date"))
+                        else require(row.getInt("daily_pages") > 0) { "Invalid daily goal" }
+                    }
+                    if (table == "reading_sessions" || table == "reading_notes" || table == "book_goals") {
                         val bookId = maps["books"]?.get(row.getLong("book_id"))
                             ?: throw IllegalArgumentException("Backup refers to a missing book; no changes saved.")
                         values.put("book_id", bookId)
@@ -419,6 +444,12 @@ internal object LegacyMigration {
                     idMap[row.getLong("id")] = targetId
                 }
                 maps[table] = idMap
+            }
+            collectionTypeRows.forEach { row ->
+                db.insertOrThrow("collection_types", null, ContentValues().apply {
+                    put("name", row.getString("name"))
+                    put("kind", row.getString("kind"))
+                })
             }
             val newlyArchived = mutableSetOf<String>()
             sourcePlans.forEach { (plan, importedAt) ->

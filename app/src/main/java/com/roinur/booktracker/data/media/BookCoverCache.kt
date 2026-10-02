@@ -22,14 +22,17 @@ internal class BookCoverCache(private val directory: File, private val download:
         directory.listFiles()?.filter { it.isFile && it.name !in keep }?.forEach { it.delete() }
     }
 
-    fun load(url: String): Bitmap? {
-        synchronized(this) {
-            val file = File(directory, name(url))
-            if (file.isFile) {
-                BitmapFactory.decodeFile(file.path)?.let { return it }
-                file.delete()
-            }
+    fun loadCached(url: String): Bitmap? = synchronized(this) {
+        val file = File(directory, name(url))
+        if (file.isFile) {
+            BitmapFactory.decodeFile(file.path)?.let { return it }
+            file.delete()
         }
+        null
+    }
+
+    fun load(url: String): Bitmap? {
+        loadCached(url)?.let { return it }
         val bitmap = download(url) ?: return null
         synchronized(this) {
             // A completed request must not restore an old cover after the user replaces it.

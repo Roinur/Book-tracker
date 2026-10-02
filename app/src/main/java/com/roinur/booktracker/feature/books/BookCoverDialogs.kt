@@ -16,7 +16,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Icon
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -46,27 +53,46 @@ internal fun CoverSourceDialog(
     onDismiss: () -> Unit,
     onGallery: () -> Unit,
     onCamera: () -> Unit,
-    onSearch: () -> Unit
+    onSearch: () -> Unit,
+    coverUrl: String = "",
+    bookTitle: String = ""
 ) {
-    AlertDialog(
-            shape = RoundedCornerShape(8.dp),
-            containerColor = MaterialTheme.colorScheme.surface,
-            tonalElevation = 0.dp,
-            modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f), RoundedCornerShape(8.dp)),
-        onDismissRequest = onDismiss,
-        title = { Text("Change cover") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(onClick = onGallery, modifier = Modifier.fillMaxWidth()) { Text("Gallery") }
-                Button(onClick = onCamera, modifier = Modifier.fillMaxWidth()) { Text("Camera") }
-                Button(onClick = onSearch, modifier = Modifier.fillMaxWidth()) { Text("Search") }
+    val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(8.dp)
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Column(Modifier.padding(20.dp).widthIn(max = 400.dp).fillMaxWidth()
+            .clip(shape).background(colors.surfaceContainerLow)
+            .border(1.dp, colors.outlineVariant, shape).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Change cover", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                TextButton(onClick = onDismiss, shape = shape) { Text("Close") }
             }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                BookCoverImage(coverUrl, bookTitle, Modifier.width(106.dp).height(160.dp).clip(shape))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CoverSourceButton("Gallery", R.drawable.ic_image_24, onGallery)
+                    CoverSourceButton("Camera", R.drawable.ic_camera_24, onCamera)
+                    CoverSourceButton("Search", R.drawable.ic_search_24, onSearch)
+                }
+            }
         }
-    )
+    }
+}
+
+@Composable
+private fun CoverSourceButton(label: String, icon: Int, onClick: () -> Unit) {
+    OutlinedButton(onClick = onClick, shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth().height(48.dp), contentPadding = PaddingValues(horizontal = 12.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(painterResource(icon), null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.primary)
+            Text(label, Modifier.weight(1f), color = MaterialTheme.colorScheme.primary,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
 }
 
 @Composable

@@ -21,7 +21,10 @@ An Android reading journal for books, reading sessions, notes and personal goals
 
 ## Features
 
-- Library list and gallery, collections, pinned books, search and manual reading status.
+- Library list and gallery, pinned books, search and manual reading status. Gallery cards support adjustable columns, frosted cover previews and optional hidden titles.
+- Typed collections for themes, book types, publishers and other groups. Expand collection chips, assign or remove them across selected books, undo assignments, rename and merge.
+- Reading map connects books and overlapping collections, with status colours and filters by collection type.
+- Collection progress shows status breakdowns and actual pages read. Tap a collection for pace, remaining time, session estimates and books closest to completion.
 - Sort by total pages, title, author, rating or progress; deselect sorting to use date-added order. New books start as Not started.
 - Light, dark and adaptive themes, selectable accent colours and an optional Extra dark setting.
 - Tap an author in Book details to search your entire library for that author.
@@ -29,6 +32,7 @@ An Android reading journal for books, reading sessions, notes and personal goals
 - Swipe left to start reading; swipe right to pin or unpin.
 - Automatically saved reading notes, global note search and copying notes in date order.
 - Daily and monthly time/page goals, yearly book goals, heatmaps and reading trends.
+- Per-book deadlines or daily page targets, with today's remaining pages, estimated reading time and finish date. Swipe the Pages read card to set a goal. Active goals have a separate ongoing notification. Time estimates use book pace, then publisher pace, then overall pace.
 - Historical sessions can count toward lifetime totals while being excluded from dated statistics.
 - ISBN scanning and metadata from Open Library, Google Books and Libris, with missing fields filled across matching editions.
 - Cover search by ISBN, title or author, optional Google Images search, and local cover selection.

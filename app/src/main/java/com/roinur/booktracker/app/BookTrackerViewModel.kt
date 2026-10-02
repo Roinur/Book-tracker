@@ -7,6 +7,7 @@ import com.roinur.booktracker.data.stats.BookStatsRepository
 
 import com.roinur.booktracker.data.media.BookCoverCache
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import android.app.Application
 import android.content.Context
@@ -30,6 +31,40 @@ import java.time.format.DateTimeFormatter
 
 class BookTrackerViewModel(application: Application) : AndroidViewModel(application) {
     private val db = BookTrackerDatabase(application)
+    private val bookGoalRepository = com.roinur.booktracker.data.database.BookGoalRepository(db)
+    internal var bookGoals by mutableStateOf<Map<Int, BookGoal>>(emptyMap())
+        private set
+    internal var bookGoalPageRequestBookId: Int? = null
+        private set
+    internal var bookGoalPageRequest by mutableStateOf(0)
+        private set
+    internal var bookGoalOpenRequest by mutableStateOf<Int?>(null)
+        private set
+
+    internal fun requestOpenBookGoal(bookId: Int) {
+        if (statsBooks.any { it.id == bookId }) {
+            selectBook(bookId); bookGoalPageRequestBookId = bookId; bookGoalPageRequest++
+            bookGoalOpenRequest = bookId
+        }
+    }
+    internal fun consumeBookGoalOpenRequest() { bookGoalOpenRequest = null }
+
+    internal fun saveBookGoal(goal: BookGoal, onSaved: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { bookGoalRepository.save(goal) } }
+            if (result.isSuccess) { reload(); maybeAutoBackup() } else statusMessage = "Could not save goal: ${result.exceptionOrNull()?.message}"
+            onSaved(result.isSuccess)
+        }
+    }
+    internal fun removeBookGoal(bookId: Int, onRemoved: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            if (!checkpoint("before removing book goal")) { onRemoved(false); return@launch }
+            val result = withContext(Dispatchers.IO) { runCatching { bookGoalRepository.remove(bookId) } }
+            if (result.isSuccess) { reload(); maybeAutoBackup() } else statusMessage = "Could not remove goal."
+            onRemoved(result.isSuccess)
+        }
+    }
+
     private val backups = BookBackupService(db, application)
     private val recovery = com.roinur.booktracker.data.backup.BookRecoveryStore(java.io.File(application.filesDir, "recovery_copies"))
     internal var recoveryCopies by mutableStateOf(recovery.list())
@@ -47,7 +82,10 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
 
     private suspend fun checkpoint(reason: String): Boolean {
         val result = withContext(Dispatchers.IO) {
-            runCatching { recovery.save(backups.exportBackupJson().toString().toByteArray(Charsets.UTF_8), reason) }
+            runCatching {
+                val bytes = backups.exportBackupJson(allowRemoteCoverFetch = false).toString().toByteArray(Charsets.UTF_8)
+                recovery.save(bytes, reason)
+            }
         }
         recoveryCopies = withContext(Dispatchers.IO) { recovery.list() }
         if (result.isFailure) statusMessage = "Change cancelled: recovery copy failed. ${result.exceptionOrNull()?.message.orEmpty()}"
@@ -153,6 +191,8 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         private set
     var collectionSuggestions by mutableStateOf<List<String>>(emptyList())
         private set
+    internal var collectionTypes by mutableStateOf<Map<String, BookCollectionType>>(emptyMap())
+        private set
     var coverSearchQuery by mutableStateOf("")
         private set
     var coverSearchResults by mutableStateOf<List<CoverImageResult>>(emptyList())
@@ -193,6 +233,8 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
     var galleryMode by mutableStateOf(prefs.getBoolean(KEY_BOOK_GALLERY_MODE, false))
         private set
     var galleryColumns by mutableStateOf(prefs.getInt(KEY_BOOK_GALLERY_COLUMNS, 2).coerceIn(1, 5))
+        private set
+    var galleryHideTitle by mutableStateOf(prefs.getBoolean(KEY_BOOK_GALLERY_HIDE_TITLE, false))
         private set
     var sortField by mutableStateOf(loadSortField())
         private set
@@ -241,7 +283,9 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         books = db.listBooks(searchInput, sortField, sortDescending)
         stats = statistics.loadStats()
         readingGoals = db.loadReadingGoals()
+        bookGoals = bookGoalRepository.list()
         collectionSuggestions = db.listCollections()
+        collectionTypes = db.listCollectionTypes()
         if (selectedBookId != null && statsBooks.none { it.id == selectedBookId }) {
             selectedBookId = null
         }
@@ -249,6 +293,7 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         selectedBookSessions = selectedBookId?.let { db.listSessions(it) }.orEmpty()
         allBookNotes = db.listAllNotes()
         allBookSessions = db.listAllSessions()
+        BookGoalNotifications.update(getApplication(), statsBooks, bookGoals, allBookSessions.map { it.session }, collectionTypes)
         if (activeBookId != null && statsBooks.none { it.id == activeBookId }) {
             clearActiveBook()
         } else if (activeBookId != null && activeStartedAtMs <= 0L) {
@@ -292,6 +337,48 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         collectionsInput = next
     }
 
+    internal fun createCollection(name: String, type: BookCollectionType, onSaved: () -> Unit = {}) {
+        val clean = name.trim()
+        if (clean.isEmpty() || ',' in clean) {
+            statusMessage = "Enter a collection name without commas."
+            return
+        }
+        val existing = collectionSuggestions.firstOrNull { it.equals(clean, ignoreCase = true) }
+        if (existing != null) {
+            addCollectionToDraft(existing)
+            onSaved()
+            return
+        }
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching {
+                db.setCollectionType(clean, type)
+                db.listCollections() to db.listCollectionTypes()
+            } }
+            result.onSuccess { (names, types) ->
+                collectionSuggestions = names
+                collectionTypes = types
+                addCollectionToDraft(clean)
+                maybeAutoBackup()
+                onSaved()
+            }.onFailure { statusMessage = "Could not create collection: ${it.message}" }
+        }
+    }
+
+    internal fun setCollectionType(name: String, type: BookCollectionType, onSaved: () -> Unit = {}) {
+        viewModelScope.launch {
+            if (!checkpoint("before-collection-type")) return@launch
+            val result = withContext(Dispatchers.IO) { runCatching {
+                db.setCollectionType(name, type)
+                db.listCollectionTypes()
+            } }
+            result.onSuccess { types ->
+                collectionTypes = types
+                maybeAutoBackup()
+                onSaved()
+            }.onFailure { statusMessage = "Could not change collection type: ${it.message}" }
+        }
+    }
+
     fun removeCollectionFromDraft(collection: String) {
         collectionsInput = splitBookCollections(collectionsInput)
             .filterNot { it.equals(collection, ignoreCase = true) }
@@ -303,6 +390,8 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun searchAuthor(author: String) {
+        libraryCollection = ""
+        libraryMissingType = null
         libraryFilter = BookLibraryFilter.ALL
         prefs.edit().putString(KEY_BOOK_LIBRARY_FILTER, libraryFilter.name).apply()
         updateSearch(author)
@@ -313,9 +402,155 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         reload()
     }
 
+    internal var libraryCollection by mutableStateOf("")
+        private set
+    internal var libraryMissingType by mutableStateOf<BookCollectionType?>(null)
+        private set
+    internal var collectionBusy by mutableStateOf(false)
+        private set
+    internal var collectionError by mutableStateOf("")
+        private set
+    internal var collectionEditing by mutableStateOf(false)
+        private set
+    internal var collectionSelection by mutableStateOf(BookCollectionSelection())
+        private set
+    internal val collectionSelectedBooks get() = collectionSelection.bookIds
+    internal val collectionSelectedNames get() = collectionSelection.selectedCollections(statsBooks)
+    internal val collectionMixedNames get() = collectionSelection.mixedCollections(statsBooks)
+    internal var collectionUndo by mutableStateOf<BookCollectionChange?>(null)
+        private set
+    private var collectionUndoExpiry: Job? = null
+
+    private fun offerCollectionUndo(change: BookCollectionChange?) {
+        collectionUndoExpiry?.cancel()
+        collectionUndo = change?.takeIf { it.before.isNotEmpty() }
+        val offered = collectionUndo ?: return
+        collectionUndoExpiry = viewModelScope.launch {
+            delay(20_000)
+            if (collectionUndo == offered) collectionUndo = null
+        }
+    }
+
+    internal fun undoCollectionEdit() {
+        if (collectionBusy) return
+        val change = collectionUndo ?: return
+        collectionUndoExpiry?.cancel()
+        collectionBusy = true; collectionError = ""
+        viewModelScope.launch {
+            try {
+                if (!checkpoint("before-collection-undo")) {
+                    collectionError = statusMessage
+                    offerCollectionUndo(change)
+                    return@launch
+                }
+                withContext(Dispatchers.IO) { db.undoBookCollections(change) }
+                offerCollectionUndo(null)
+                reload(); maybeAutoBackup()
+            } catch (error: Exception) {
+                collectionError = error.message ?: "Could not undo collections."
+                offerCollectionUndo(null)
+            } finally { collectionBusy = false }
+        }
+    }
+
+    internal fun toggleCollectionBook(id: Int) {
+        if (!collectionBusy) collectionSelection = collectionSelection.toggleBook(id)
+    }
+
+    internal fun editLibraryCollections() {
+        if (collectionBusy) return
+        if (!collectionEditing) {
+            offerCollectionUndo(null)
+            collectionEditing = true; collectionSelection = BookCollectionSelection(); collectionError = ""
+            return
+        }
+        if (collectionSelectedBooks.isEmpty() || collectionSelection.changes.isEmpty()) {
+            collectionEditing = false; collectionSelection = BookCollectionSelection(); collectionError = ""; return
+        }
+        val ids = collectionSelectedBooks
+        val changes = collectionSelection.changes
+        val additions = collectionSuggestions.filterTo(linkedSetOf()) { changes[it.lowercase(java.util.Locale.ROOT)] == true }
+        val removals = changes.filterValues { !it }.keys
+        collectionBusy = true; collectionError = ""
+        viewModelScope.launch {
+            try {
+                if (!checkpoint("before-collection-assignment")) { collectionError = statusMessage; return@launch }
+                val change = withContext(Dispatchers.IO) { db.updateBookCollections(ids, additions, removals) }
+                reload(); maybeAutoBackup()
+                collectionEditing = false; collectionSelection = BookCollectionSelection()
+                offerCollectionUndo(change)
+            } catch (error: Exception) { collectionError = error.message ?: "Could not save collections." }
+            finally { collectionBusy = false }
+        }
+    }
+
+    internal fun matchesCollectionFilter(book: BookRow): Boolean {
+        val names = splitBookCollections(book.collections)
+        return (libraryCollection.isBlank() || names.any { it.equals(libraryCollection, true) }) &&
+            (libraryMissingType == null || names.none {
+                (collectionTypes[it.lowercase(java.util.Locale.ROOT)] ?: BookCollectionType.OTHER) == libraryMissingType
+            })
+    }
+
     fun applyCollectionSuggestion(collection: String) {
-        searchInput = if (searchInput.equals(collection, ignoreCase = true)) "" else collection
-        reload()
+        if (collectionEditing) {
+            if (!collectionBusy) {
+                collectionSelection = collectionSelection.toggleCollection(collection, statsBooks)
+                collectionError = ""
+            }
+            return
+        }
+        libraryCollection = if (libraryCollection.equals(collection, true)) "" else collection
+        libraryMissingType = null
+    }
+
+    internal fun clearCollectionFilter() {
+        libraryCollection = ""; libraryMissingType = null
+        libraryFilter = BookLibraryFilter.ALL
+        prefs.edit().putString(KEY_BOOK_LIBRARY_FILTER, libraryFilter.name).apply()
+        updateSearch("")
+    }
+
+    internal fun openCollectionProgressBooks(collection: String, filter: BookLibraryFilter) {
+        libraryCollection = collection
+        libraryMissingType = null
+        libraryFilter = filter
+        prefs.edit().putString(KEY_BOOK_LIBRARY_FILTER, filter.name).apply()
+        updateSearch("")
+    }
+    internal fun showWithoutCollectionType(type: BookCollectionType) {
+        libraryCollection = ""
+        libraryMissingType = if (libraryMissingType == type) null else type
+        libraryFilter = BookLibraryFilter.ALL
+        prefs.edit().putString(KEY_BOOK_LIBRARY_FILTER, libraryFilter.name).apply()
+        if (searchInput.isNotBlank()) updateSearch("")
+    }
+
+    internal fun changeCollections(names: Set<String>, target: String? = null,
+                                   type: BookCollectionType? = null, onSaved: () -> Unit = {}) {
+        if (collectionBusy) return
+        collectionBusy = true
+        collectionError = ""
+        viewModelScope.launch {
+            try {
+                if (!checkpoint("before-collection-change")) {
+                    collectionError = statusMessage
+                    return@launch
+                }
+                withContext(Dispatchers.IO) { db.changeCollections(names, target, type) }
+                if (target != null) {
+                    collectionSelection = collectionSelection.renamed(names, target.trim())
+                    if (names.any { it.equals(libraryCollection, true) }) libraryCollection = target.trim()
+                    collectionsInput = normalizeBookCollections(splitBookCollections(collectionsInput).map {
+                        if (names.any { name -> name.equals(it, true) }) target.trim() else it
+                    }.joinToString(", "))
+                }
+                reload()
+                maybeAutoBackup()
+                onSaved()
+            } catch (error: Exception) { collectionError = error.message ?: "Could not save collections." }
+            finally { collectionBusy = false }
+        }
     }
 
     fun updateExtraDark(enabled: Boolean) {
@@ -345,6 +580,11 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
     fun cycleLibraryFilter() {
         libraryFilter = libraryFilter.next()
         prefs.edit().putString(KEY_BOOK_LIBRARY_FILTER, libraryFilter.name).apply()
+    }
+
+    fun updateGalleryHideTitle(hide: Boolean) {
+        galleryHideTitle = hide
+        prefs.edit().putBoolean(KEY_BOOK_GALLERY_HIDE_TITLE, hide).apply()
     }
 
     fun updateGalleryColumns(columns: Int) {

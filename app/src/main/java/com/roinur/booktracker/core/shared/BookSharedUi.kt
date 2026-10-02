@@ -255,8 +255,13 @@ internal fun EntrySwipeDismissContainer(
     onTogglePinned: (Int) -> Unit,
     onToggleRead: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     content: @Composable RowScope.() -> Unit
 ) {
+    if (!enabled) {
+        Row(modifier = modifier, content = content)
+        return
+    }
     val haptic = LocalHapticFeedback.current
     val density = androidx.compose.ui.platform.LocalDensity.current
     val swipeCommitTracker = rememberSwipeCommitTrackerState(
@@ -671,7 +676,8 @@ internal fun ThumbnailImage(
     onClick: (() -> Unit)? = null,
     contentScale: ContentScale = ContentScale.Crop,
     modifier: Modifier = Modifier,
-    persistCover: Boolean = false
+    persistCover: Boolean = false,
+    frostedBottomHeight: Dp = 0.dp
 ) {
     val context = LocalContext.current
     val initialBitmap = ThumbnailBitmapCache.get(thumbnailUrl)
@@ -721,11 +727,12 @@ internal fun ThumbnailImage(
         val imageBitmap = thumbnailState.first
         val loadFinished = thumbnailState.second
         if (imageBitmap != null) {
-            Image(
+            BookCoverArtwork(
                 bitmap = imageBitmap,
                 contentDescription = contentDescription,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = contentScale
+                contentScale = contentScale,
+                frostedBottomHeight = frostedBottomHeight
             )
         } else if (!loadFinished) {
             CircularProgressIndicator(

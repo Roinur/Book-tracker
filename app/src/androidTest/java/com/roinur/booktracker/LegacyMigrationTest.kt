@@ -56,6 +56,20 @@ class LegacyMigrationTest {
         }
     }
 
+    @Test fun collectionTypesSurviveBackupAndDoNotChangeBookMembership() = database { db ->
+        val id = db.upsertBook(BookSeed("", "Republic", "Plato", 300, "", "", "Classics, Philosophy"))
+        db.setCollectionType("Classics", BookCollectionType.TYPE)
+        db.setCollectionType("Philosophy", BookCollectionType.THEME)
+        val backup = BookBackupService(db).exportBackupJson()
+        assertEquals(2, backup.getJSONArray("collection_types").length())
+        database { restored ->
+            BookBackupService(restored).importBackupJson(backup)
+            assertEquals(BookCollectionType.TYPE, restored.listCollectionTypes()["classics"])
+            assertEquals(BookCollectionType.THEME, restored.listCollectionTypes()["philosophy"])
+            assertEquals("Classics, Philosophy", book(restored, id)?.collections)
+        }
+    }
+
     @Test fun oldNotesCanBeEditedWithoutLosingText() = database { db ->
         val id = seed(db)
         val noteId = db.writableDatabase.insertOrThrow("reading_notes", null, ContentValues().apply {
@@ -170,6 +184,7 @@ class LegacyMigrationTest {
         val first=seed(db)
         val legacy=BookBackupService(db).exportBackupJson().put("format","BOOK_TRACKER_BACKUP_V1")
         legacy.remove("bookly_sources"); legacy.remove("bookly_links"); legacy.remove("reading_goals")
+        legacy.remove("collection_types")
         legacy.remove("content_sha256"); legacy.remove("integrity_sha256")
         BookBackupService(db).importBackupJson(legacy)
         assertEquals(2L,count(db,"books"))

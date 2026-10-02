@@ -12,9 +12,9 @@ import java.time.Instant
 
 /** Owns backup snapshots and import orchestration; shares the app database connection. */
 internal class BookBackupService(private val database: BookTrackerDatabase, private val context: android.content.Context? = null) {
-    fun exportBackupJson(): JSONObject {
+    fun exportBackupJson(allowRemoteCoverFetch: Boolean = true): JSONObject {
         val root = exportSnapshot()
-        context?.let { root.put("cover_assets", BookPortableCovers.export(it, root.getJSONArray("books"))) }
+        context?.let { root.put("cover_assets", BookPortableCovers.export(it, root.getJSONArray("books"), allowRemoteCoverFetch)) }
         return LegacyMigration.sealTrackerBackup(root)
     }
 
@@ -31,9 +31,11 @@ internal class BookBackupService(private val database: BookTrackerDatabase, priv
                 put("reading_sessions", exportTable(snapshot, "reading_sessions"))
                 put("reading_notes", exportTable(snapshot, "reading_notes"))
                 put("reading_goals", exportTable(snapshot, "reading_goals"))
+                put("collection_types", exportTable(snapshot, "collection_types"))
+                put("book_goals", exportTable(snapshot, "book_goals"))
             }
             snapshot.setTransactionSuccessful()
-            return LegacyMigration.sealTrackerBackup(backup)
+            return backup
         } finally {
             snapshot.endTransaction()
         }

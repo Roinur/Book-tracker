@@ -1,6 +1,6 @@
 # Data compatibility
 
-The application ID, signing identity, database name, preference keys and native backup format are retained in version 1.0. An alias preserves the previous launcher component name for existing shortcuts.
+The application ID, signing identity, database name, preference keys and native backup format are retained in version 1.1. An alias preserves the previous launcher component name for existing shortcuts.
 
 The import code uses generic Legacy/Archive names. Existing serialized `bookly_sources` and `bookly_links` keys/table names intentionally remain: changing them for cosmetic reasons would invalidate older backups or orphan preserved data.
 
@@ -9,3 +9,7 @@ Native backups include original imported bytes and mappings alongside editable B
 Finished status is independent of page progress. Completing a 200-page book after reading 180 pages must retain 180 pages. Completion dates and active-session state are independent records.
 
 Instrumentation tests create and delete only randomly named test databases. Never point tests at the daily library database, uninstall the release app or clear its storage.
+
+Version 1.1 adds collection types and per-book goals as separate tables. Book goals reference book IDs and follow their books through backup restoration; deleting a book also removes its goal. These optional sections are covered by V3 backup checksums. Version 1.1 can read older V3 backups without these sections. Older app versions may reject newer backups rather than discard unknown data.
+
+Book-goal notifications are separate from the active reading timer. Saving or removing a goal does not pause, resume or discard a reading session.

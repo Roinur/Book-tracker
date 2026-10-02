@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1
+
+- Added per-book goals: finish within days, weeks or months, or read a chosen number of pages each day.
+- Swipe the Pages read card to view and configure a book goal. Active goals appear first, with today's remaining pages, estimated time and projected finish.
+- Book goals have their own ongoing notifications and are included in native backups.
+- Remaining-time estimates use the book's own pace first, then matching publisher collections, then overall reading pace. Sessions excluded from statistics do not affect estimates.
+- Added Reading map with linked books and collections, reading-status colours, type filters and cover previews.
+- Collections can be classified as Theme, Type, Publisher or Other. Expand the library chips to see all collections.
+- Edit collections across multiple selected books, remove assignments, undo changes, rename collections and merge them with confirmation.
+- Added Collection progress with status breakdowns, actual page progress, reading pace and estimated time to finish. Tap a collection for insights and use View books to open its library results.
+- Updated gallery covers with a frosted information area, proportional card sizes and an option to hide titles.
+- Refreshed cover selection and improved collection edit navigation, scrolling and selection feedback.
+- Cached covers locally and refined backup and recovery handling.
+- Added spacing between the Pages read and Book goal swipe pages, with rounded progress bars.
+
 ## 1.0
 
 - Added an optional Extra dark setting while keeping the existing light, dark and adaptive themes.

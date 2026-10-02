@@ -3,12 +3,12 @@
 Kotlin sources live under `app/src/main/java/com/roinur/booktracker` with the application namespace `com.roinur.booktracker`.
 
 - `app`: app composition, navigation, shared ViewModel and preference keys.
-- `data/database`: SQLite schema and record operations, in the `com.roinur.booktracker.data.database` package.
+- `data/database`: SQLite schema, record operations and BookGoalRepository, in the `com.roinur.booktracker.data.database` package.
 - `data/backup`: backup snapshots and import orchestration, in its own Kotlin package.
 - `data/stats`: read-only statistics queries and aggregation, in its own Kotlin package.
 - `data/imports`: legacy import conversion, original archives and native backup validation.
 - `data/lookup`, `data/media`: metadata lookup and local cover storage.
-- `background`: the reading timer foreground service.
+- `background`: the reading timer foreground service and separate book-goal notifications. Goals use a daily alarm and boot/time-change receivers rather than another continuously running service.
 - `feature`: books, library, reading, notes, stats and settings screens.
 - `core`: models, formatting, shared UI and trend algorithms.
 

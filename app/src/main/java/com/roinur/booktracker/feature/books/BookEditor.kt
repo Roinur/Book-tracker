@@ -51,6 +51,9 @@ internal fun BookAddScreen(
 ) {
     var showNewCollectionDialog by rememberSaveable { mutableStateOf(false) }
     var newCollectionDraft by rememberSaveable { mutableStateOf("") }
+    var newCollectionTypeName by rememberSaveable { mutableStateOf("") }
+    var editedCollectionName by rememberSaveable { mutableStateOf("") }
+    var editedCollectionTypeName by rememberSaveable { mutableStateOf("") }
     var showRemoveConfirm by rememberSaveable { mutableStateOf(false) }
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -104,10 +107,17 @@ internal fun BookAddScreen(
         BookCollectionPicker(
             selected = splitBookCollections(vm.collectionsInput),
             suggestions = vm.collectionSuggestions,
+            types = vm.collectionTypes,
             onAddExisting = vm::addCollectionToDraft,
             onRemove = vm::removeCollectionFromDraft,
+            onEditType = { collection ->
+                editedCollectionName = collection
+                editedCollectionTypeName = (vm.collectionTypes[collection.lowercase(java.util.Locale.ROOT)]
+                    ?: BookCollectionType.OTHER).name
+            },
             onCreate = {
                 newCollectionDraft = ""
+                newCollectionTypeName = ""
                 showNewCollectionDialog = true
             }
         )
@@ -145,21 +155,54 @@ internal fun BookAddScreen(
             onDismissRequest = { showNewCollectionDialog = false },
             title = { Text("New collection") },
             text = {
-                OutlinedTextField(
-                    value = newCollectionDraft,
-                    onValueChange = { newCollectionDraft = it },
-                    label = { Text("Collection name") },
-                    singleLine = true
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = newCollectionDraft,
+                        onValueChange = { newCollectionDraft = it },
+                        label = { Text("Collection name") },
+                        singleLine = true
+                    )
+                    Text("Type", style = MaterialTheme.typography.titleSmall)
+                    BookCollectionTypeChoices(newCollectionTypeName) { newCollectionTypeName = it.name }
+                }
             },
             confirmButton = {
                 TextButton(onClick = {
-                    vm.addCollectionToDraft(newCollectionDraft)
-                    showNewCollectionDialog = false
-                }) { Text("Add") }
+                    vm.createCollection(newCollectionDraft, BookCollectionType.valueOf(newCollectionTypeName)) {
+                        showNewCollectionDialog = false
+                    }
+                }, enabled = newCollectionDraft.isNotBlank() && newCollectionTypeName.isNotBlank()) { Text("Add") }
             },
             dismissButton = {
                 TextButton(onClick = { showNewCollectionDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+    if (editedCollectionName.isNotBlank()) {
+        AlertDialog(
+            shape = RoundedCornerShape(8.dp),
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 0.dp,
+            modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f), RoundedCornerShape(8.dp)),
+            onDismissRequest = { editedCollectionName = "" },
+            title = { Text(editedCollectionName) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Collection type", style = MaterialTheme.typography.titleSmall)
+                    BookCollectionTypeChoices(editedCollectionTypeName) { editedCollectionTypeName = it.name }
+                    Text("Applies to this collection in every book.", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.setCollectionType(editedCollectionName, BookCollectionType.valueOf(editedCollectionTypeName)) {
+                        editedCollectionName = ""
+                    }
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { editedCollectionName = "" }) { Text("Cancel") }
             }
         )
     }
@@ -183,6 +226,26 @@ internal fun BookAddScreen(
                 TextButton(onClick = { showRemoveConfirm = false }) { Text("Cancel") }
             }
         )
+    }
+}
+
+@Composable
+private fun BookCollectionTypeChoices(selectedName: String, onSelect: (BookCollectionType) -> Unit) {
+    listOf(
+        listOf(BookCollectionType.PUBLISHER, BookCollectionType.TYPE),
+        listOf(BookCollectionType.THEME, BookCollectionType.OTHER)
+    ).forEach { row ->
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            row.forEach { type ->
+                val modifier = Modifier.weight(1f).height(42.dp)
+                if (selectedName == type.name) {
+                    Button(onClick = { onSelect(type) }, modifier = modifier) { Text(type.label) }
+                } else {
+                    OutlinedButton(onClick = { onSelect(type) }, modifier = modifier) { Text(type.label) }
+                }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
     }
 }
 

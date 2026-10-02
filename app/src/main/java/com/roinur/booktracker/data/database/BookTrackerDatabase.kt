@@ -67,6 +67,8 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
         ensureReadingSessionColumns(db)
         ensureSessionNoteSchema(db)
         ensureReadingGoalsSchema(db)
+        BookGoalRepository.ensureSchema(db)
+        ensureCollectionTypesSchema(db)
         LegacyMigration.ensureSchema(db)
     }
 
@@ -76,11 +78,20 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
         ensureReadingSessionColumns(db)
         ensureSessionNoteSchema(db)
         ensureReadingGoalsSchema(db)
+        BookGoalRepository.ensureSchema(db)
+        ensureCollectionTypesSchema(db)
         LegacyMigration.ensureSchema(db)
         LegacyMigration.restoreMissingCompletionDates(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+
+    private fun ensureCollectionTypesSchema(db: SQLiteDatabase) {
+        db.execSQL("""CREATE TABLE IF NOT EXISTS collection_types (
+            name TEXT PRIMARY KEY COLLATE NOCASE NOT NULL,
+            kind TEXT NOT NULL DEFAULT 'OTHER'
+        )""")
+    }
 
     private fun ensureSessionNoteSchema(db: SQLiteDatabase) {
         db.execSQL(
@@ -230,10 +241,106 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
                     .filter { it.isNotBlank() }
             }
         }
+        readableDatabase.rawQuery("SELECT name FROM collection_types", emptyArray()).use { cursor ->
+            while (cursor.moveToNext()) values += cursor.getString(0).orEmpty()
+        }
         return values
             .distinctBy { it.lowercase(Locale.US) }
             .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it })
-            .take(24)
+    }
+
+    fun listCollectionTypes(): Map<String, BookCollectionType> {
+        val result = linkedMapOf<String, BookCollectionType>()
+        readableDatabase.rawQuery("SELECT name, kind FROM collection_types", emptyArray()).use { cursor ->
+            while (cursor.moveToNext()) {
+                result[cursor.getString(0).lowercase(Locale.ROOT)] = BookCollectionType.fromStorage(cursor.getString(1))
+            }
+        }
+        return result
+    }
+
+    fun setCollectionType(name: String, type: BookCollectionType) {
+        val trimmed = name.trim()
+        require(trimmed.isNotEmpty() && ',' !in trimmed) { "Enter a collection name without commas." }
+        val rowId = writableDatabase.insertWithOnConflict("collection_types", null, ContentValues().apply {
+            put("name", trimmed)
+            put("kind", type.name)
+        }, SQLiteDatabase.CONFLICT_REPLACE)
+        require(rowId != -1L) { "Could not save collection type." }
+    }
+
+    fun addCollectionToBooks(ids: Set<Int>, collection: String) {
+        updateBookCollections(ids, setOf(collection), emptySet())
+    }
+
+    fun updateBookCollections(ids: Set<Int>, additions: Set<String>, removals: Set<String>): BookCollectionChange {
+        val clean = additions.mapTo(linkedSetOf()) { it.trim() }
+        require(clean.all { it.isNotBlank() && it.none { char -> char in ",;\n\r" } }) { "Choose valid collections." }
+        val before = linkedMapOf<Int, String>()
+        val after = linkedMapOf<Int, String>()
+        val database = writableDatabase
+        database.beginTransaction()
+        try {
+            val selected = listBooks("", BookSortField.ADDED, false).filter { it.id in ids }
+            check(selected.size == ids.size) { "A selected book no longer exists." }
+            selected.forEach { book ->
+                val next = editedBookCollections(book.collections, clean, removals)
+                if (next != book.collections) {
+                    before[book.id] = book.collections
+                    after[book.id] = next
+                    check(database.update("books", ContentValues().apply { put("collections", next) },
+                        "id = ?", arrayOf(book.id.toString())) == 1)
+                }
+            }
+            database.setTransactionSuccessful()
+        } finally { database.endTransaction() }
+        return BookCollectionChange(before.toMap(), after.toMap())
+    }
+
+    fun undoBookCollections(change: BookCollectionChange) {
+        check(change.before.keys == change.after.keys)
+        val database = writableDatabase
+        database.beginTransaction()
+        try {
+            change.before.forEach { (id, previous) ->
+                check(database.update("books", ContentValues().apply { put("collections", previous) },
+                    "id = ? AND collections = ?", arrayOf(id.toString(), change.after.getValue(id))) == 1) {
+                    "Collections have changed since this edit. Nothing was undone."
+                }
+            }
+            database.setTransactionSuccessful()
+        } finally { database.endTransaction() }
+    }
+
+    fun changeCollections(names: Set<String>, target: String? = null, type: BookCollectionType? = null) {
+        require(names.isNotEmpty()) { "Select at least one collection." }
+        val clean = target?.trim()
+        require(clean == null || (clean.isNotBlank() && clean.none { it in ",;\n\r" })) {
+            "Enter one collection name without separators."
+        }
+        val keys = names.mapTo(hashSetOf()) { it.lowercase(Locale.ROOT) }
+        val database = writableDatabase
+        database.beginTransaction()
+        try {
+            if (clean != null) {
+                val targetType = listCollectionTypes()[clean.lowercase(Locale.ROOT)]
+                    ?: names.firstOrNull()?.let { listCollectionTypes()[it.lowercase(Locale.ROOT)] }
+                    ?: BookCollectionType.OTHER
+                listBooks("", BookSortField.ADDED, false).forEach { book ->
+                    val parts = splitBookCollections(book.collections)
+                    if (parts.any { it.lowercase(Locale.ROOT) in keys }) {
+                        val next = normalizeBookCollections(parts.map {
+                            if (it.lowercase(Locale.ROOT) in keys || it.equals(clean, true)) clean else it
+                        }.joinToString(", "))
+                        check(database.update("books", ContentValues().apply { put("collections", next) },
+                            "id = ?", arrayOf(book.id.toString())) == 1) { "Collection update failed." }
+                    }
+                }
+                names.forEach { database.delete("collection_types", "name = ? COLLATE NOCASE", arrayOf(it)) }
+                setCollectionType(clean, type ?: targetType)
+            } else if (type != null) names.forEach { setCollectionType(it, type) }
+            database.setTransactionSuccessful()
+        } finally { database.endTransaction() }
     }
 
     fun loadReadingGoals(): BookReadingGoals = readableDatabase.rawQuery(

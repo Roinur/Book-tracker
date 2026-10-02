@@ -31,8 +31,8 @@ android {
         applicationId = "com.roinur.booktracker"
         minSdk = 26
         targetSdk = 34
-        versionCode = 50
-        versionName = "1.0"
+        versionCode = 72
+        versionName = "1.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             abiFilters += listOf("arm64-v8a")

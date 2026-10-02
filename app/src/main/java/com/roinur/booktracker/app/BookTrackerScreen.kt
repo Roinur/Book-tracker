@@ -44,6 +44,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -85,6 +86,9 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
             else BookScreenMode.MAIN.name
         )
     }
+    var detailReturnModeName by rememberSaveable { mutableStateOf(BookScreenMode.MAIN.name) }
+    var libraryFromCollectionProgress by rememberSaveable { mutableStateOf(false) }
+    val collectionProgressState = rememberSaveableStateHolder()
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var scannerOpen by rememberSaveable { mutableStateOf(false) }
     var showFinishDialog by rememberSaveable { mutableStateOf(false) }
@@ -108,10 +112,12 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
     var holdPopup by remember { mutableStateOf<BookRatingHoldState?>(null) }
     val selectedTab = runCatching { BookTrackerTab.valueOf(selectedTabName) }.getOrDefault(BookTrackerTab.STATS)
     val screenMode = runCatching { BookScreenMode.valueOf(screenModeName) }.getOrDefault(BookScreenMode.MAIN)
+    val canReturnCollectionProgress = libraryFromCollectionProgress && selectedTab == BookTrackerTab.LIBRARY &&
+        screenMode == BookScreenMode.MAIN && !showSettings
     val coverTarget = coverTargetName?.let { runCatching { BookCoverTarget.valueOf(it) }.getOrNull() }
     val coverSearchTarget = coverSearchTargetName?.let { runCatching { BookCoverTarget.valueOf(it) }.getOrNull() }
     val activeBook = vm.statsBooks.firstOrNull { it.id == vm.activeBookId }
-    val visibleLibraryBooks = vm.books.filter { vm.libraryFilter.matches(it, vm.activeBookId) }
+    val visibleLibraryBooks = vm.books.filter { vm.libraryFilter.matches(it, vm.activeBookId) && vm.matchesCollectionFilter(it) }
     val fallbackBook = mostRecentlyReadBook(vm.statsBooks, vm.allBookSessions, vm.activeBookId)
     val selectedBook = vm.statsBooks.firstOrNull { it.id == vm.selectedBookId } ?: fallbackBook
     val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -122,9 +128,8 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
         }
     }
     val readingNotificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (!granted) {
-            vm.setStatus("Notification permission denied. The timer still runs, but Android may hide it from the shade.")
-        }
+        if (granted) BookGoalNotifications.refresh(context)
+        else vm.setStatus("Notification permission denied. Android may hide reading and goal notifications.")
     }
     val draftCoverPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
@@ -213,6 +218,11 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
         scope.launch { listState.scrollToItem(0) }
     }
 
+    fun returnToCollectionProgress() {
+        libraryFromCollectionProgress = false
+        screenModeName = BookScreenMode.COLLECTION_PROGRESS.name
+    }
+
     fun openReading(bookId: Int) {
         requestReadingNotificationPermissionIfNeeded()
         if (!vm.startReading(bookId)) return
@@ -226,6 +236,15 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
         if (vm.readingOpenRequest > 0) {
             vm.activeBookId?.let { openReading(it) }
             vm.consumeReadingOpenRequest()
+        }
+    }
+
+    LaunchedEffect(vm.bookGoalOpenRequest) {
+        if (vm.bookGoalOpenRequest != null) {
+            showSettings = false
+            screenModeName = BookScreenMode.DETAIL.name
+            scope.launch { listState.scrollToItem(0) }
+            vm.consumeBookGoalOpenRequest()
         }
     }
 
@@ -244,7 +263,7 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
         scope.launch { listState.scrollToItem(0) }
     }
 
-    BackHandler(enabled = showSettings || screenMode != BookScreenMode.MAIN || showFinishDialog || manualLogInitialMode != null || actionNoteKindName != null || showCountdownDialog || showBookGraphDialog || showGlobalSessionsDialog || globalNotesFilterKindName != null) {
+    BackHandler(enabled = canReturnCollectionProgress || showSettings || screenMode != BookScreenMode.MAIN || showFinishDialog || manualLogInitialMode != null || actionNoteKindName != null || showCountdownDialog || showBookGraphDialog || showGlobalSessionsDialog || globalNotesFilterKindName != null) {
         when {
             showFinishDialog -> showFinishDialog = false
             actionNoteKindName != null -> actionNoteKindName = null
@@ -263,12 +282,15 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
             screenMode == BookScreenMode.SESSION_NOTE -> screenModeName = BookScreenMode.DETAIL.name
             screenMode == BookScreenMode.READING -> minimizeReading()
             screenMode == BookScreenMode.ADD -> leaveAddScreen()
+            screenMode == BookScreenMode.DETAIL && detailReturnModeName in listOf(BookScreenMode.READING_MAP.name, BookScreenMode.COLLECTION_PROGRESS.name) ->
+                screenModeName = detailReturnModeName
+            canReturnCollectionProgress -> returnToCollectionProgress()
             else -> closeToMain()
         }
     }
 
-    LaunchedEffect(vm.activeBookId, vm.countdownEndMs) {
-        while (vm.activeBookId != null || vm.countdownEndMs > System.currentTimeMillis()) {
+    LaunchedEffect(vm.activeBookId, vm.countdownEndMs, vm.bookGoals.isNotEmpty()) {
+        while (vm.activeBookId != null || vm.countdownEndMs > System.currentTimeMillis() || vm.bookGoals.isNotEmpty()) {
             nowMs = System.currentTimeMillis()
             delay(1000L)
         }
@@ -298,17 +320,24 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                     screenMode == BookScreenMode.READING -> "Reading"
                     screenMode == BookScreenMode.SESSION_NOTE -> "Session notes"
                     screenMode == BookScreenMode.TRENDS -> "Reading Trends"
+                    screenMode == BookScreenMode.READING_MAP -> "Reading map"
+                    screenMode == BookScreenMode.COLLECTION_PROGRESS -> "Collection progress"
                     else -> APP_TITLE
                 },
                 themeMode = vm.themeMode,
                 accentMode = vm.accentMode,
                 settingsActive = showSettings,
-                onBack = if (!showSettings && screenMode != BookScreenMode.MAIN) {
+                onBack = if (!showSettings && (screenMode != BookScreenMode.MAIN || canReturnCollectionProgress)) {
                     {
                         when (screenMode) {
+                            BookScreenMode.MAIN -> returnToCollectionProgress()
                             BookScreenMode.READING -> minimizeReading()
                             BookScreenMode.ADD -> leaveAddScreen()
                             BookScreenMode.SESSION_NOTE -> screenModeName = BookScreenMode.DETAIL.name
+                            BookScreenMode.DETAIL -> {
+                                if (detailReturnModeName in listOf(BookScreenMode.READING_MAP.name, BookScreenMode.COLLECTION_PROGRESS.name)) screenModeName = detailReturnModeName
+                                else closeToMain()
+                            }
                             else -> closeToMain()
                         }
                     }
@@ -327,6 +356,7 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
         val pagerState = rememberPagerState(initialPage = selectedTab.ordinal, pageCount = { BookTrackerTab.entries.size })
         var navigationDragStart by remember { mutableStateOf(selectedTab.ordinal) }
         LaunchedEffect(selectedTab) {
+            if (selectedTab != BookTrackerTab.LIBRARY) libraryFromCollectionProgress = false
             pagerState.animateScrollToPage(selectedTab.ordinal)
         }
         val pageContent: @Composable (BookTrackerTab) -> Unit = { pageTab ->
@@ -334,6 +364,27 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
             Box(Modifier.fillMaxSize()) {
             if (!showSettings && screenMode == BookScreenMode.TRENDS) {
                 TrendOverTimePanel(vm::trendTargets, vm::trendSnapshot, Modifier.fillMaxSize().padding(12.dp))
+            } else if (!showSettings && screenMode == BookScreenMode.READING_MAP) {
+                BookReadingMapScreen(vm.statsBooks, vm.collectionTypes, onOpenBook = { bookId ->
+                    vm.selectBook(bookId)
+                    detailReturnModeName = BookScreenMode.READING_MAP.name
+                    screenModeName = BookScreenMode.DETAIL.name
+                })
+            } else if (!showSettings && screenMode == BookScreenMode.COLLECTION_PROGRESS) {
+                collectionProgressState.SaveableStateProvider(BookScreenMode.COLLECTION_PROGRESS.name) {
+                    BookCollectionProgressScreen(vm.statsBooks, vm.collectionSuggestions, vm.collectionTypes, vm.allBookSessions,
+                        onOpenBook = { id ->
+                            vm.selectBook(id)
+                            detailReturnModeName = BookScreenMode.COLLECTION_PROGRESS.name
+                            screenModeName = BookScreenMode.DETAIL.name
+                        }) { name, filter ->
+                        vm.openCollectionProgressBooks(name, filter)
+                        selectedTabName = BookTrackerTab.LIBRARY.name
+                        libraryFromCollectionProgress = true
+                        screenModeName = BookScreenMode.MAIN.name
+                        scope.launch { libraryListState.scrollToItem(0) }
+                    }
+                }
             } else LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -388,6 +439,16 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                             BookDetailCard(
                                 modifier = Modifier.fillParentMaxHeight(),
                                 book = selectedBook,
+                                bookGoal = vm.bookGoals[selectedBook.id],
+                                goalOpenRequest = if (vm.bookGoalPageRequestBookId == selectedBook.id) vm.bookGoalPageRequest else 0,
+                                allGoalSessions = vm.allBookSessions.map { it.session },
+                                allPaceBooks = vm.statsBooks,
+                                collectionTypes = vm.collectionTypes,
+                                onSaveGoal = { goal, done -> vm.saveBookGoal(goal) { success ->
+                                    if (success) requestReadingNotificationPermissionIfNeeded()
+                                    done(success)
+                                } },
+                                onRemoveGoal = { done -> vm.removeBookGoal(selectedBook.id, done) },
                                 active = selectedBook.id == vm.activeBookId,
                                 activeStartedAtMs = vm.activeStartedAtMs,
                                 activePausedAtMs = vm.activePausedAtMs,
@@ -515,7 +576,17 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                                     nowMs = nowMs,
                                     onOpenBook = { bookId ->
                                         vm.selectBook(bookId)
+                                        detailReturnModeName = BookScreenMode.MAIN.name
                                         screenModeName = BookScreenMode.DETAIL.name
+                                    },
+                                    onOpenReadingMap = {
+                                        selectedTabName = BookTrackerTab.LIBRARY.name
+                                        screenModeName = BookScreenMode.READING_MAP.name
+                                    },
+                                    onOpenCollectionProgress = {
+                                        selectedTabName = BookTrackerTab.LIBRARY.name
+                                        libraryFromCollectionProgress = false
+                                        screenModeName = BookScreenMode.COLLECTION_PROGRESS.name
                                     },
                                     onContinue = { bookId ->
                                         openReading(bookId)
@@ -530,6 +601,22 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                             if (visibleLibraryBooks.isEmpty()) {
                                 item(contentType = "book_empty") {
                                     BookEmptyStateText("No books match the current library view.")
+                                }
+                            } else if (vm.collectionEditing) {
+                                val columns = if (vm.galleryMode) vm.galleryColumns.coerceIn(1, 5) else 1
+                                val rows = visibleLibraryBooks.chunked(columns)
+                                items(rows.size, key = { "collection_edit_$it" }) { index ->
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        rows[index].forEach { book ->
+                                            BookCollectionBookCard(book, book.id in vm.collectionSelectedBooks,
+                                                vm.galleryMode, Modifier.weight(1f),
+                                                vm.collectionSelection.previewCollections(book, vm.collectionSuggestions),
+                                                hideTitle = vm.galleryHideTitle) {
+                                                vm.toggleCollectionBook(book.id)
+                                            }
+                                        }
+                                        repeat(columns - rows[index].size) { Spacer(Modifier.weight(1f)) }
+                                    }
                                 }
                             } else if (vm.galleryMode) {
                                 val rows = visibleLibraryBooks.chunked(vm.galleryColumns.coerceIn(1, 5))
@@ -554,7 +641,8 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                                 },
                                                 onRatingCommit = { rating -> vm.updateRating(book.id, rating) },
-                                                onRatingCancel = { holdPopup = null }
+                                                onRatingCancel = { holdPopup = null },
+                                                hideTitle = vm.galleryHideTitle
                                             )
                                         }
                                         repeat(vm.galleryColumns.coerceIn(1, 5) - rows[rowIndex].size) {
@@ -664,6 +752,8 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
 
     coverTarget?.let { target ->
         CoverSourceDialog(
+            coverUrl = if (target == BookCoverTarget.DRAFT) vm.draftCoverUrl else selectedBook?.coverUrl.orEmpty(),
+            bookTitle = if (target == BookCoverTarget.DRAFT) vm.titleInput else selectedBook?.title.orEmpty(),
             onDismiss = { coverTargetName = null },
             onGallery = {
                 if (target == BookCoverTarget.DRAFT) {

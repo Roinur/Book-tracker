@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Card
@@ -25,6 +26,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -54,7 +59,9 @@ internal fun BookCoverImage(
     coverUrl: String,
     title: String,
 
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Crop,
+    frostedBottomHeight: Dp = 0.dp
 ) {
     val context = LocalContext.current
     val localBitmap by produceState<ImageBitmap?>(initialValue = null, coverUrl) {
@@ -75,11 +82,12 @@ internal fun BookCoverImage(
     }
     when {
         localBitmap != null -> {
-            Image(
+            BookCoverArtwork(
                 bitmap = localBitmap!!,
                 contentDescription = "Cover for $title",
                 modifier = modifier.clip(MaterialTheme.shapes.small),
-                contentScale = ContentScale.Crop
+                contentScale = contentScale,
+                frostedBottomHeight = frostedBottomHeight
             )
         }
         coverUrl.isNotBlank() -> {
@@ -89,7 +97,8 @@ internal fun BookCoverImage(
 
             contentDescription = "Cover for $title",
             modifier = modifier,
-            contentScale = ContentScale.Crop
+            contentScale = contentScale,
+                frostedBottomHeight = frostedBottomHeight
         )
         }
         else -> Box(
@@ -104,6 +113,22 @@ internal fun BookCoverImage(
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
             )
+        }
+    }
+}
+
+/** Reuse one decoded bitmap for the sharp cover and its frosted lower edge. */
+@Composable
+internal fun BookCoverArtwork(
+    bitmap: ImageBitmap, contentDescription: String?, modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Crop, frostedBottomHeight: Dp = 0.dp
+) {
+    Box(modifier) {
+        Image(bitmap, contentDescription, Modifier.fillMaxSize(), contentScale = contentScale)
+        if (frostedBottomHeight > 0.dp) {
+            Image(bitmap, null, Modifier.fillMaxSize().drawWithContent {
+                clipRect(top = (size.height - frostedBottomHeight.toPx()).coerceAtLeast(0f)) { this@drawWithContent.drawContent() }
+            }.blur(12.dp, edgeTreatment = BlurredEdgeTreatment.Rectangle), contentScale = contentScale)
         }
     }
 }

@@ -15,7 +15,9 @@ internal enum class BookScreenMode {
     DETAIL,
     READING,
     SESSION_NOTE,
-    TRENDS
+    TRENDS,
+    READING_MAP,
+    COLLECTION_PROGRESS
 }
 
 internal enum class BookCoverTarget {

@@ -31,7 +31,8 @@ internal fun BookSettingsContent(
     onPickBackupFolder: () -> Unit,
     onCheckBackup: () -> Unit,
     onExportRecovery: (String) -> Unit,
-    onExportLegacy: (String) -> Unit
+    onExportLegacy: (String) -> Unit,
+    onRequestNotificationPermission: () -> Unit
 ) {
     var recoveryExpanded by rememberSaveable { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -39,6 +40,18 @@ internal fun BookSettingsContent(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Extra dark", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Switch(checked = vm.extraDark, onCheckedChange = vm::updateExtraDark)
+            }
+        }
+        BookSectionCard {
+            Text("Notifications", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            GoalNotificationSetting("Reading goals", "Daily, monthly and yearly", vm.readingGoalNotificationsEnabled) { enabled ->
+                vm.updateReadingGoalNotifications(enabled)
+                if (enabled) onRequestNotificationPermission()
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            GoalNotificationSetting("Book goals", "Individual book targets", vm.bookGoalNotificationsEnabled) { enabled ->
+                vm.updateBookGoalNotifications(enabled)
+                if (enabled) onRequestNotificationPermission()
             }
         }
         BookSettingsActionPanel(
@@ -75,6 +88,17 @@ internal fun BookSettingsContent(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+}
+
+@Composable
+private fun GoalNotificationSetting(title: String, subtitle: String, enabled: Boolean, onChanged: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = enabled, onCheckedChange = onChanged)
     }
 }
 

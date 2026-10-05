@@ -4,7 +4,7 @@
 
 Book Tracker 1.1 adds Reading map, collection progress, bulk collection editing and per-book reading goals. It also improves gallery performance, navigation, metadata lookup, graphs and backups.
 
-This release covers the changes from the original 1.0 release (build 33) to 1.1 (build 73).
+This release covers the changes from the original 1.0 release (build 33) to 1.1 (build 77).
 
 ### Per-book reading goals
 
@@ -15,6 +15,13 @@ This release covers the changes from the original 1.0 release (build 33) to 1.1 
 - Each active book goal has its own ongoing notification showing today's remaining pages and estimated time. Tap it to open that book's goal. Reading-session notifications stay separate.
 - Remaining-time estimates use the book's own timed reading first, then books sharing a Publisher collection, then your overall reading pace. The same fallback applies in Book details; sessions excluded from statistics do not affect the estimate.
 - Goals are stored locally and included in backups. The swipe pages have more space between them and rounded progress bars.
+
+### Reading-goal notifications
+
+- A separate ongoing notification shows progress towards the daily, monthly and yearly reading goals. Daily and monthly targets use the selected Pages or Minutes metric; the yearly target counts books.
+- Expand the notification to see all three targets, progress and remaining amounts. Tap it to open Reading goals.
+- Reading goals and individual Book goals have independent notification switches in Settings. Keep either, both or neither enabled.
+- Progress matches the app's goal circles, follows the device's local calendar and refreshes after saved reading and at the next day.
 
 ### Reading map
 
@@ -30,6 +37,7 @@ This release covers the changes from the original 1.0 release (build 33) to 1.1 
 
 - Classify collections as Theme, Type, Publisher or Other when creating them. Existing collections can be reclassified.
 - Expand the library's horizontal collection chips into wrapping rows using the Collections icon. The chips keep the same appearance.
+- The same icon expands collections in Add book and Edit book. Those screens allow scrolling while collections are expanded; collapsing returns to the fixed layout at the top.
 - Find books missing a Theme, Type, Publisher or Other assignment through the Unassigned filter.
 - Enter Edit, select several books, choose collections and press Done to apply assignments together. Book previews show collection membership while editing.
 - Selecting a book shows its current collections. Remove assignments by deselecting them; mixed assignments are indicated when selected books differ.
@@ -52,6 +60,7 @@ This release covers the changes from the original 1.0 release (build 33) to 1.1 
 
 - Continue reading follows the most recently read book across the full library, independently of sorting and filters. An active or paused session takes priority.
 - Swipe left to start a reading session; swipe right to pin or unpin.
+- Pin and Unpin gestures use the app's theme-coloured vector icon in both list and gallery layouts.
 - The Pages sort replaces Added and sorts by total book length. Tap the active sort again to clear it and return to date-added order. Title, Author, Rating and Progress remain available.
 - Newly added books start as Not started.
 - Gallery cards have cropped cover previews, a frosted information area and proportions suited to one through five columns.
@@ -64,8 +73,8 @@ This release covers the changes from the original 1.0 release (build 33) to 1.1 
 - Floating Stats and Library navigation, new navigation icons and animated page transitions.
 - Swiping the navigation control previews the destination page before committing. Shorter drags and velocity-based switching make page changes more responsive.
 - Library content continues behind the floating navigation; Stats reserves space for it.
-- Stats, Book details and Edit book fit the available screen area, including Android gesture and button navigation insets. Stats uses the same sizing across Week, Month, Year and All time.
-- Text fitting and truncation support smaller screens and larger system text without adding scrolling to those pages.
+- Stats, Book details and Edit book with collapsed collections fit the available screen area, including Android gesture and button navigation insets. Stats uses the same sizing across Week, Month, Year and All time.
+- Text fitting and truncation support smaller screens and larger system text. Add book and Edit book allow scrolling when collections are expanded.
 - Improved accent-colour contrast and touch feedback clipped to the shape of buttons and circular controls.
 - Extra dark is an optional Settings toggle. Existing light, dark and adaptive theme behaviour remains available.
 - Updated the Show graph and reading-notification icons, cover selection, library layout controls and disclosure headers to match the app's design.

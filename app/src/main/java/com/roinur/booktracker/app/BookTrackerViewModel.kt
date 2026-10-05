@@ -48,6 +48,10 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
     internal fun consumeBookGoalOpenRequest() { bookGoalOpenRequest = null }
+    internal var readingGoalsOpenRequested by mutableStateOf(false)
+        private set
+    internal fun requestOpenReadingGoals() { readingGoalsOpenRequested = true }
+    internal fun consumeReadingGoalsOpenRequest() { readingGoalsOpenRequested = false }
 
     internal fun saveBookGoal(goal: BookGoal, onSaved: (Boolean) -> Unit) {
         viewModelScope.launch {
@@ -156,6 +160,10 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
     var themeMode by mutableStateOf(loadThemeMode())
         private set
     var extraDark by mutableStateOf(prefs.getBoolean("extra_dark", false))
+        private set
+    var readingGoalNotificationsEnabled by mutableStateOf(prefs.getBoolean(KEY_READING_GOAL_NOTIFICATIONS_ENABLED, true))
+        private set
+    var bookGoalNotificationsEnabled by mutableStateOf(prefs.getBoolean(KEY_BOOK_GOAL_NOTIFICATIONS_ENABLED, true))
         private set
     var accentMode by mutableStateOf(loadAccentMode())
         private set
@@ -293,7 +301,7 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         selectedBookSessions = selectedBookId?.let { db.listSessions(it) }.orEmpty()
         allBookNotes = db.listAllNotes()
         allBookSessions = db.listAllSessions()
-        BookGoalNotifications.update(getApplication(), statsBooks, bookGoals, allBookSessions.map { it.session }, collectionTypes)
+        syncGoalNotifications()
         if (activeBookId != null && statsBooks.none { it.id == activeBookId }) {
             clearActiveBook()
         } else if (activeBookId != null && activeStartedAtMs <= 0L) {
@@ -556,6 +564,22 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
     fun updateExtraDark(enabled: Boolean) {
         extraDark = enabled
         prefs.edit().putBoolean("extra_dark", enabled).apply()
+    }
+
+    private fun syncGoalNotifications() {
+        BookGoalNotifications.update(getApplication(), statsBooks, bookGoals, allBookSessions.map { it.session }, collectionTypes, readingGoals, stats)
+    }
+
+    fun updateReadingGoalNotifications(enabled: Boolean) {
+        readingGoalNotificationsEnabled = enabled
+        prefs.edit().putBoolean(KEY_READING_GOAL_NOTIFICATIONS_ENABLED, enabled).apply()
+        syncGoalNotifications()
+    }
+
+    fun updateBookGoalNotifications(enabled: Boolean) {
+        bookGoalNotificationsEnabled = enabled
+        prefs.edit().putBoolean(KEY_BOOK_GOAL_NOTIFICATIONS_ENABLED, enabled).apply()
+        syncGoalNotifications()
     }
 
     fun cycleThemeMode() {

@@ -385,11 +385,19 @@ internal fun EntrySwipeDismissContainer(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Text(
-                            text = backgroundSpec.glyph,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = backgroundSpec.tint
-                        )
+                        if (visualDirection == SwipeToDismissBoxValue.StartToEnd) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_push_pin_24),
+                                contentDescription = null,
+                                tint = backgroundSpec.tint
+                            )
+                        } else {
+                            Text(
+                                text = backgroundSpec.glyph,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = backgroundSpec.tint
+                            )
+                        }
                         Text(
                             text = backgroundSpec.label,
                             style = MaterialTheme.typography.labelLarge,

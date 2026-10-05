@@ -23,6 +23,7 @@ An Android reading journal for books, reading sessions, notes and personal goals
 
 - Library list and gallery, pinned books, search and manual reading status. Gallery cards support adjustable columns, frosted cover previews and optional hidden titles.
 - Typed collections for themes, book types, publishers and other groups. Expand collection chips, assign or remove them across selected books, undo assignments, rename and merge.
+- Expand collections in Add book and Edit book to see all chips. Scroll while expanded, then collapse to return to the fixed layout.
 - Reading map connects books and overlapping collections, with status colours and filters by collection type.
 - Collection progress shows status breakdowns and actual pages read. Tap a collection for pace, remaining time, session estimates and books closest to completion.
 - Sort by total pages, title, author, rating or progress; deselect sorting to use date-added order. New books start as Not started.
@@ -32,6 +33,7 @@ An Android reading journal for books, reading sessions, notes and personal goals
 - Swipe left to start reading; swipe right to pin or unpin.
 - Automatically saved reading notes, global note search and copying notes in date order.
 - Daily and monthly time/page goals, yearly book goals, heatmaps and reading progress summaries.
+- An ongoing Reading goals notification shows daily, monthly and yearly progress. Settings has independent switches for overall reading-goal and individual book-goal notifications.
 - Reading trends compares authors or collections over Today, Week, Month, Year or All time. Choose Pages, Time or Sessions, compare totals or share, and inspect positive ratings or average ratings.
 - Interactive Stats and book graphs: hold and drag to inspect points. Stats keeps the same sizing across periods and fits the available screen area.
 - Per-book deadlines or daily page targets, with today's remaining pages, estimated reading time and finish date. Swipe the Pages read card to set a goal. Active goals have a separate ongoing notification. Time estimates use book pace, then publisher pace, then overall pace.

@@ -6,6 +6,8 @@ import androidx.compose.runtime.setValue
 
 internal const val BOOK_TRACKER_DB = "book_tracker.db"
 internal const val BOOK_TRACKER_PREFS = "book_tracker_prefs"
+internal const val KEY_BOOK_GOAL_NOTIFICATIONS_ENABLED = "book_goal_notifications_enabled"
+internal const val KEY_READING_GOAL_NOTIFICATIONS_ENABLED = "reading_goal_notifications_enabled"
 internal const val KEY_BOOK_ACTIVE_ID = "book_active_id"
 internal const val KEY_BOOK_ACTIVE_STARTED_MS = "book_active_started_ms"
 internal const val KEY_BOOK_ACTIVE_PAUSED_AT_MS = "book_active_paused_at_ms"

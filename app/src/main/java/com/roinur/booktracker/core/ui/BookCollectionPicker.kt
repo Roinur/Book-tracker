@@ -6,6 +6,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -16,12 +18,17 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
@@ -53,6 +60,7 @@ internal fun BookFadingRow(
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 internal fun BookCollectionPicker(
     selected: List<String>,
     suggestions: List<String>,
@@ -60,39 +68,52 @@ internal fun BookCollectionPicker(
     onAddExisting: (String) -> Unit,
     onRemove: (String) -> Unit,
     onEditType: (String) -> Unit,
-    onCreate: () -> Unit
+    onCreate: () -> Unit,
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit
 ) {
+    val available = suggestions.filterNot { suggestion ->
+        selected.any { it.equals(suggestion, ignoreCase = true) }
+    }
+    val expandButton: @Composable () -> Unit = {
+        IconButton(onClick = onToggleExpanded, modifier = Modifier.size(36.dp)
+            .semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" }) {
+            Icon(painterResource(R.drawable.ic_collections_24),
+                contentDescription = if (expanded) "Collapse collections" else "Expand collections",
+                modifier = Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
+        }
+    }
+    val selectedChip: @Composable (String) -> Unit = { collection ->
+        BookCollectionTypeChip(collectionTypeLabel(collection, types) + " ×", true,
+            onClick = { onRemove(collection) }, onLongClick = { onEditType(collection) })
+    }
+    val availableChip: @Composable (String) -> Unit = { collection ->
+        BookCollectionTypeChip(collectionTypeLabel(collection, types), false,
+            onClick = { onAddExisting(collection) }, onLongClick = { onEditType(collection) })
+    }
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("Collections", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             Text("Hold to change type", style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        BookFadingRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(selected, key = { "selected_${it.lowercase(Locale.US)}" }) { collection ->
-                BookCollectionTypeChip(
-                    label = collectionTypeLabel(collection, types) + " ×",
-                    selected = true,
-                    onClick = { onRemove(collection) },
-                    onLongClick = { onEditType(collection) }
-                )
-            }
-            item("new_collection") {
+        if (expanded) {
+            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                expandButton()
+                selected.forEach { collection -> key(collection.lowercase(Locale.ROOT)) { selectedChip(collection) } }
                 BookCollectionTypeChip("+", false, onCreate)
+                available.forEach { collection -> key(collection.lowercase(Locale.ROOT)) { availableChip(collection) } }
             }
-        }
-        val available = suggestions.filterNot { suggestion ->
-            selected.any { it.equals(suggestion, ignoreCase = true) }
-        }
-        if (available.isNotEmpty()) {
+        } else {
             BookFadingRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(available, key = { "suggest_${it.lowercase(Locale.US)}" }) { collection ->
-                    BookCollectionTypeChip(
-                        label = collectionTypeLabel(collection, types),
-                        selected = false,
-                        onClick = { onAddExisting(collection) },
-                        onLongClick = { onEditType(collection) }
-                    )
+                item("expand_collections") { expandButton() }
+                items(selected, key = { "selected_${it.lowercase(Locale.ROOT)}" }) { collection -> selectedChip(collection) }
+                item("new_collection") { BookCollectionTypeChip("+", false, onCreate) }
+            }
+            if (available.isNotEmpty()) {
+                BookFadingRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(available, key = { "suggest_${it.lowercase(Locale.ROOT)}" }) { collection -> availableChip(collection) }
                 }
             }
         }

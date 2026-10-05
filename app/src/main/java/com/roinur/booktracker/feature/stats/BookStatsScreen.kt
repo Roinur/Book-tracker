@@ -26,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -76,12 +77,20 @@ internal fun BookStatsContent(
     onOpenGlobalSessions: () -> Unit,
     onDaySelected: (DailyActivityPoint) -> Unit,
     onOpenTrends: () -> Unit,
-    onSaveGoals: (BookReadingGoals) -> Boolean
+    onSaveGoals: (BookReadingGoals) -> Boolean,
+    openReadingGoals: Boolean = false,
+    onReadingGoalsOpened: () -> Unit = {}
 ) {
     var rangeName by rememberSaveable { mutableStateOf(BookStatsRange.WEEK.name) }
     var metricName by rememberSaveable { mutableStateOf(BookGraphMetric.TIME.name) }
     var showReadingProgress by rememberSaveable { mutableStateOf(false) }
     var showReadingGoals by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(openReadingGoals) {
+        if (openReadingGoals) {
+            showReadingGoals = true
+            onReadingGoalsOpened()
+        }
+    }
     var showYearBooks by remember { mutableStateOf(false) }
     val selectedRange = runCatching { BookStatsRange.valueOf(rangeName) }.getOrDefault(BookStatsRange.WEEK)
     val selectedMetric = runCatching { BookGraphMetric.valueOf(metricName) }.getOrDefault(BookGraphMetric.TIME)
@@ -177,15 +186,11 @@ internal fun BookStatsContent(
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                val today = LocalDate.now()
-                val dailyPoints = if (goals.dailyMetric == BookGoalMetric.TIME) stats.dailyActivity else stats.dailyPageActivity
-                val monthlyPoints = if (goals.monthlyMetric == BookGoalMetric.TIME) stats.dailyActivity else stats.dailyPageActivity
+                val goalProgress = readingGoalsProgress(goals, stats)
                 Row(Modifier.padding(6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    BookGoalRing("Daily", dailyPoints.firstOrNull { it.date == today }?.pagesRead ?: 0,
-                        if (goals.dailyMetric == BookGoalMetric.TIME) goals.dailyMinutes else goals.dailyPages) { showReadingGoals = true }
-                    BookGoalRing("Monthly", monthlyPoints.filter { it.date.year == today.year && it.date.month == today.month }.sumOf { it.pagesRead },
-                        if (goals.monthlyMetric == BookGoalMetric.TIME) goals.monthlyMinutes else goals.monthlyPages) { showReadingGoals = true }
-                    BookGoalRing("Yearly", stats.finishedThisYear, goals.yearlyBooks) { showYearBooks = true }
+                    BookGoalRing("Daily", goalProgress.daily.current, goalProgress.daily.target) { showReadingGoals = true }
+                    BookGoalRing("Monthly", goalProgress.monthly.current, goalProgress.monthly.target) { showReadingGoals = true }
+                    BookGoalRing("Yearly", goalProgress.yearly.current, goalProgress.yearly.target) { showYearBooks = true }
                 }
                 if (activeBook != null) {
                     TextButton(onClick = { onContinue(activeBook) }, modifier = Modifier.weight(1f).height(36.dp),

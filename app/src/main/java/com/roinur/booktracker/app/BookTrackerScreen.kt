@@ -86,6 +86,7 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
             else BookScreenMode.MAIN.name
         )
     }
+    var editorCollectionsExpanded by rememberSaveable(vm.editingBookId, screenModeName) { mutableStateOf(false) }
     var detailReturnModeName by rememberSaveable { mutableStateOf(BookScreenMode.MAIN.name) }
     var libraryFromCollectionProgress by rememberSaveable { mutableStateOf(false) }
     val collectionProgressState = rememberSaveableStateHolder()
@@ -254,6 +255,15 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
         }
     }
 
+    LaunchedEffect(vm.readingGoalsOpenRequested) {
+        if (vm.readingGoalsOpenRequested) {
+            showSettings = false
+            selectedTabName = BookTrackerTab.STATS.name
+            screenModeName = BookScreenMode.MAIN.name
+            scope.launch { listState.scrollToItem(0) }
+        }
+    }
+
     fun minimizeReading() {
         vm.pauseReading()
         showFinishDialog = false
@@ -398,7 +408,7 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                     .fillMaxSize()
                     .imePadding(),
                 state = if (!showSettings && screenMode == BookScreenMode.MAIN && selectedTab == BookTrackerTab.LIBRARY) libraryListState else listState,
-                userScrollEnabled = screenMode != BookScreenMode.DETAIL && screenMode != BookScreenMode.ADD &&
+                userScrollEnabled = screenMode != BookScreenMode.DETAIL && (screenMode != BookScreenMode.ADD || editorCollectionsExpanded) &&
                     !(!showSettings && screenMode == BookScreenMode.MAIN && selectedTab == BookTrackerTab.STATS),
                 contentPadding = if (!showSettings && screenMode == BookScreenMode.MAIN && selectedTab == BookTrackerTab.LIBRARY)
                     PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 80.dp)
@@ -409,6 +419,7 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                     item(contentType = "book_settings") {
                         BookSettingsContent(
                             vm = vm,
+                            onRequestNotificationPermission = ::requestReadingNotificationPermissionIfNeeded,
                             onImport = { bookImportLauncher.launch(arrayOf("application/json", "text/plain", "text/*")) },
                             onExport = { bookExportLauncher.launch("book_tracker_backup_${LocalDate.now(ZoneId.systemDefault())}.json") },
                             onPickBackupFolder = { bookBackupFolderLauncher.launch(null) },
@@ -428,6 +439,11 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                             BookAddScreen(
                                 vm = vm,
                                 editing = vm.editingBookId != null,
+                                collectionsExpanded = editorCollectionsExpanded,
+                                onCollectionsExpandedChange = { expanded ->
+                                    editorCollectionsExpanded = expanded
+                                    if (!expanded) scope.launch { listState.scrollToItem(0) }
+                                },
                                 onScan = ::openScanner,
                                 onPickCover = { coverTargetName = BookCoverTarget.DRAFT.name },
                                 onFindCover = vm::findDraftCover,
@@ -570,7 +586,13 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                                         vm.setStatus("${point.date}: ${point.pagesRead} on the selected graph across ${point.entriesRead} ${if (point.entriesRead == 1) "book" else "books"}.")
                                     },
                                     onOpenTrends = { screenModeName = BookScreenMode.TRENDS.name },
-                                    onSaveGoals = vm::saveReadingGoals
+                                    onSaveGoals = { goals ->
+                                        vm.saveReadingGoals(goals).also { saved ->
+                                            if (saved && vm.readingGoalNotificationsEnabled) requestReadingNotificationPermissionIfNeeded()
+                                        }
+                                    },
+                                    openReadingGoals = vm.readingGoalsOpenRequested,
+                                    onReadingGoalsOpened = vm::consumeReadingGoalsOpenRequest
                                 )
                             }
                         }

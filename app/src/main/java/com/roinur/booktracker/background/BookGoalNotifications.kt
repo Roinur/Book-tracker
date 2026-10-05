@@ -11,6 +11,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.roinur.booktracker.data.database.BookGoalRepository
 import com.roinur.booktracker.data.database.BookTrackerDatabase
+import com.roinur.booktracker.data.stats.BookStatsRepository
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.concurrent.Executors
@@ -26,7 +27,7 @@ internal object BookGoalNotifications {
             try {
                 BookTrackerDatabase(app).use { db ->
                     sync(app, db.listBooks("", BookSortField.ADDED, false), BookGoalRepository(db).list(),
-                        db.listAllSessions().map { it.session }, db.listCollectionTypes())
+                        db.listAllSessions().map { it.session }, db.listCollectionTypes(), db.loadReadingGoals(), BookStatsRepository(db).loadStats())
                 }
             } catch (error: Exception) {
                 android.util.Log.w("BookGoalNotifications", "Could not refresh book goals", error)
@@ -34,16 +35,18 @@ internal object BookGoalNotifications {
         }
     }
 
-    fun update(context: Context, books: List<BookRow>, goals: Map<Int, BookGoal>, sessions: List<BookReadingSessionRow>, collectionTypes: Map<String, BookCollectionType>) {
-        executor.execute { runCatching { sync(context.applicationContext, books, goals, sessions, collectionTypes) }
+    fun update(context: Context, books: List<BookRow>, goals: Map<Int, BookGoal>, sessions: List<BookReadingSessionRow>, collectionTypes: Map<String, BookCollectionType>, readingGoals: BookReadingGoals, stats: BookStats) {
+        executor.execute { runCatching { sync(context.applicationContext, books, goals, sessions, collectionTypes, readingGoals, stats) }
             .onFailure { android.util.Log.w("BookGoalNotifications", "Could not update book goals", it) } }
     }
 
-    private fun sync(context: Context, books: List<BookRow>, goals: Map<Int, BookGoal>, sessions: List<BookReadingSessionRow>, collectionTypes: Map<String, BookCollectionType>) {
+    private fun sync(context: Context, books: List<BookRow>, goals: Map<Int, BookGoal>, sessions: List<BookReadingSessionRow>, collectionTypes: Map<String, BookCollectionType>, readingGoals: BookReadingGoals, stats: BookStats) {
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel(CHANNEL, "Book goals", NotificationManager.IMPORTANCE_LOW)
             .apply { description = "Daily progress towards your book goals" })
-        val active = books.filter { it.id in goals && !bookGoalProgress(it, goals.getValue(it.id), sessions, books = books, collectionTypes = collectionTypes).completed }
+        val bookGoalsEnabled = context.getSharedPreferences(BOOK_TRACKER_PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_BOOK_GOAL_NOTIFICATIONS_ENABLED, true)
+        val active = if (bookGoalsEnabled) books.filter { it.id in goals && !bookGoalProgress(it, goals.getValue(it.id), sessions, books = books, collectionTypes = collectionTypes).completed } else emptyList()
         val prefs = context.getSharedPreferences("book_goal_notifications", Context.MODE_PRIVATE)
         val old = prefs.getStringSet("book_ids", emptySet()).orEmpty()
         val ids = active.map { it.id.toString() }.toSet()
@@ -70,10 +73,11 @@ internal object BookGoalNotifications {
                 .setSilent(true).build()
             try { manager.notify(TAG, book.id, notification) } catch (_: SecurityException) { /* Permission may change while updating. */ }
         }
+        val readingGoalsActive = ReadingGoalsNotification.sync(context, readingGoals, stats)
         val alarm = context.getSystemService(AlarmManager::class.java)
         val pending = PendingIntent.getBroadcast(context, 0, Intent(context, BookGoalRefreshReceiver::class.java)
             .setAction("com.roinur.booktracker.REFRESH_BOOK_GOALS"), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        if (active.isEmpty()) alarm.cancel(pending) else {
+        if (active.isEmpty() && !readingGoalsActive) alarm.cancel(pending) else {
             val nextDay = LocalDate.now().plusDays(1).atStartOfDay(ZoneId.systemDefault()).plusMinutes(1).toInstant().toEpochMilli()
             // No exact-alarm permission or continuously running service needed for a daily reminder.
             alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, nextDay, pending)

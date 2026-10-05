@@ -44,6 +44,8 @@ import androidx.compose.ui.semantics.contentDescription
 internal fun BookAddScreen(
     vm: BookTrackerViewModel,
     editing: Boolean,
+    collectionsExpanded: Boolean,
+    onCollectionsExpandedChange: (Boolean) -> Unit,
     onScan: () -> Unit,
     onPickCover: () -> Unit,
     onFindCover: () -> Unit,
@@ -108,6 +110,8 @@ internal fun BookAddScreen(
             selected = splitBookCollections(vm.collectionsInput),
             suggestions = vm.collectionSuggestions,
             types = vm.collectionTypes,
+            expanded = collectionsExpanded,
+            onToggleExpanded = { onCollectionsExpandedChange(!collectionsExpanded) },
             onAddExisting = vm::addCollectionToDraft,
             onRemove = vm::removeCollectionFromDraft,
             onEditType = { collection ->

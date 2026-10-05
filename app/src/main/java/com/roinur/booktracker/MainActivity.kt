@@ -33,6 +33,7 @@ class MainActivity : ComponentActivity() {
 
         handleReadingNotification(intent)
         handleBookGoalNotification(intent)
+        handleReadingGoalsNotification(intent)
         handleIncomingShareIntent(intent)
     }
 
@@ -41,6 +42,7 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         handleReadingNotification(intent)
         handleBookGoalNotification(intent)
+        handleReadingGoalsNotification(intent)
         handleIncomingShareIntent(intent)
     }
 
@@ -52,6 +54,12 @@ class MainActivity : ComponentActivity() {
     private fun handleBookGoalNotification(intent: Intent?) {
         if (intent?.action != "com.roinur.booktracker.OPEN_BOOK_GOAL") return
         bookVm.requestOpenBookGoal(intent.getIntExtra("goal_book_id", -1))
+        intent.action = null
+    }
+
+    private fun handleReadingGoalsNotification(intent: Intent?) {
+        if (intent?.action != ReadingGoalsNotification.OPEN_ACTION) return
+        bookVm.requestOpenReadingGoals()
         intent.action = null
     }
 

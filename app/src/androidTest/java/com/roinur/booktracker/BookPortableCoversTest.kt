@@ -13,6 +13,44 @@ import java.io.File
 import java.util.UUID
 
 class BookPortableCoversTest {
+    @Test fun partCoversSurviveBackupWithoutAParentCover() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val id = UUID.randomUUID().toString()
+        val original = File(context.cacheDir, "$id.png")
+        val first = BookTrackerDatabase(context, "$id-source.db")
+        val second = BookTrackerDatabase(context, "$id-target.db")
+        val url = Uri.fromFile(original).toString()
+        val restored = BookPortableCovers.file(context, url)
+        try {
+            val bitmap = Bitmap.createBitmap(3, 4, Bitmap.Config.ARGB_8888)
+            bitmap.eraseColor(android.graphics.Color.BLUE)
+            original.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
+            val bytes = original.readBytes()
+            first.upsertBook(BookSeed("", "Compendium", "Author", 400, "", "", "",
+                parts = listOf(BookPart("Scarlet", 20, 100, url), BookPart("Sign", 102, 250, url))))
+            val backup = BookBackupService(first, context).exportBackupJson()
+            assertEquals(1, backup.getJSONArray("cover_assets").length())
+            LegacyMigration.previewTrackerBackup(backup.toString().toByteArray())
+            assertTrue(original.delete())
+            assertTrue(restored.delete())
+            BookBackupService(second, context).importBackupJson(backup)
+            assertArrayEquals(bytes, restored.readBytes())
+            second.readableDatabase.rawQuery("SELECT cover_url, parts_json FROM books", null).use {
+                assertTrue(it.moveToFirst())
+                assertEquals("", it.getString(0))
+                val parts = com.roinur.booktracker.data.database.BookPartsStorage.decode(it.getString(1))
+                assertEquals(listOf(url, url), parts.map { part -> part.coverUrl })
+            }
+            assertEquals(backup.getString("content_sha256"),
+                BookBackupService(second, context).exportBackupJson().getString("content_sha256"))
+        } finally {
+            first.close(); second.close()
+            context.deleteDatabase("$id-source.db"); context.deleteDatabase("$id-target.db")
+            original.delete(); restored.delete()
+        }
+    }
+
     @Test fun coverSurvivesLossOfOriginalFileAndBackupRoundTrip() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val id = UUID.randomUUID().toString()

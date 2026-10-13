@@ -15,6 +15,8 @@ An Android reading journal for books, reading sessions, notes and personal goals
 <tr><td><img src="docs/screenshots/reading-goals.png" width="320" alt="Reading goals"></td><td><img src="docs/screenshots/reading-progress.png" width="320" alt="Reading progress"></td></tr>
 <tr><th>Author trends</th><th>Collection trends</th></tr>
 <tr><td><img src="docs/screenshots/trends-authors.png" width="320" alt="Author trends"></td><td><img src="docs/screenshots/trends-collections.png" width="320" alt="Collection trends"></td></tr>
+<tr><th>Contents scanning</th><th>Google Drive backup</th></tr>
+<tr><td><img src="docs/screenshots/contents-scanning.png" width="320" alt="Review scanned compendium titles and page numbers"></td><td><img src="docs/screenshots/drive-backup.png" width="320" alt="Optional Google Drive backup controls"></td></tr>
 </table>
 
 <img src="docs/screenshots/reading.png" width="320" alt="Active reading session">
@@ -37,11 +39,14 @@ An Android reading journal for books, reading sessions, notes and personal goals
 - Reading trends compares authors or collections over Today, Week, Month, Year or All time. Choose Pages, Time or Sessions, compare totals or share, and inspect positive ratings or average ratings.
 - Interactive Stats and book graphs: hold and drag to inspect points. Stats keeps the same sizing across periods and fits the available screen area.
 - Per-book deadlines or daily page targets, with today's remaining pages, estimated reading time and finish date. Swipe the Pages read card to set a goal. Active goals have a separate ongoing notification. Time estimates use book pace, then publisher pace, then overall pace.
+- Compendium parts with inclusive page ranges, individual covers and ratings. Inspect each work through segmented progress bars and the reading screen. Reading time is split proportionally when a session crosses parts, and completed works appear separately in statistics until the compendium is finished.
+- Scan contents pages with the camera or import photos to propose part titles and start pages. Recognition runs on the device; review, deselect and edit the proposals before applying them. Multiple photos can be combined.
 - Historical sessions can count toward lifetime totals while being excluded from dated statistics.
 - ISBN scanning and metadata from Open Library, Google Books and Libris, with missing fields filled across matching editions.
 - Cover search by ISBN, title or author, optional Google Images search, and local cover selection.
 - Page calculator for session logs in compendiums and editions with different page numbering.
 - Verified JSON backups with embedded covers, collection types and book goals. Check a backup before restoring, export local recovery copies and inspect preserved original import data.
+- Optional Google Drive backup, manual or automatic, with Wi-Fi-only scheduling and five verified versions. Download a version into the import preview before restoring to an empty library. See [Drive setup](docs/GOOGLE_DRIVE_BACKUP_SETUP.md).
 
 ## Install and update
 
@@ -51,7 +56,7 @@ Install an update over the existing app. **Do not uninstall or clear storage to 
 
 The application ID is `com.roinur.booktracker`.
 
-Release history: [1.0](https://github.com/Roinur/Book-tracker/releases/tag/v1.0) preserves the original first release (Android build 33). [1.1](https://github.com/Roinur/Book-tracker/releases/tag/v1.1) includes all later additions and gallery scrolling improvements. See the [changelog](CHANGELOG.md).
+Release history: [1.0](https://github.com/Roinur/Book-tracker/releases/tag/v1.0) preserves the original first release (Android build 33). [1.1](https://github.com/Roinur/Book-tracker/releases/tag/v1.1) covers build 88, including Reading map, collection editing and progress, book goals, compendium parts, contents scanning, Drive backup and gallery improvements. See the [changelog](CHANGELOG.md).
 
 ## Build
 
@@ -83,7 +88,7 @@ The first build needs internet access. No private export, signing key or local S
 
 ## Data and privacy
 
-Library records, notes and active-session state are local. Android system backup may also copy app data depending on device settings. Metadata and cover searches send search terms to Open Library, Google Books or Libris. Optional Google Images search opens Google's website inside the app. Camera barcode processing uses ML Kit; its SDK may send operational metrics to Google. See [privacy](PRIVACY.md).
+Library records, notes and active-session state are local. Optional Drive backup uploads complete snapshots to your Google account after you enable it; files are not end-to-end encrypted by Book Tracker. Android system backup may also copy app data depending on device settings. Metadata and cover searches send search terms to Open Library, Google Books or Libris. Optional Google Images search opens Google's website inside the app. ML Kit processes ISBN barcodes and contents-page photos on the device; its SDK may send operational metrics to Google. See [privacy](PRIVACY.md).
 
 See [data compatibility](DATA_COMPATIBILITY.md) before changing storage or import code and [architecture](ARCHITECTURE.md) for the source layout.
 

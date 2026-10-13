@@ -11,6 +11,7 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -73,6 +74,7 @@ internal fun BookTrackerApp(vm: BookTrackerViewModel) {
         outlineVariant = Color(0xFF302B40)
     ) else baseScheme
     val colorScheme = applyAccentMode(backgroundScheme, vm.accentMode, useDark)
+    SideEffect { vm.updateGoalNotificationColors(colorScheme.primary.toArgb(), colorScheme.outlineVariant.copy(alpha = 0.5f).toArgb()) }
     MaterialTheme(colorScheme = colorScheme) {
         ApplySystemBars(
             darkContent = !useDark,

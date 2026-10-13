@@ -79,7 +79,8 @@ internal fun BookStatsContent(
     onOpenTrends: () -> Unit,
     onSaveGoals: (BookReadingGoals) -> Boolean,
     openReadingGoals: Boolean = false,
-    onReadingGoalsOpened: () -> Unit = {}
+    onReadingGoalsOpened: () -> Unit = {},
+    onOpenPartBook: (Int) -> Unit = {}
 ) {
     var rangeName by rememberSaveable { mutableStateOf(BookStatsRange.WEEK.name) }
     var metricName by rememberSaveable { mutableStateOf(BookGraphMetric.TIME.name) }
@@ -365,14 +366,13 @@ internal fun BookStatsContent(
         }
     }
     breakdownMetric?.let { metric ->
-        val rows = if (breakdownAllTime) statsBooks.map { book ->
-            book.title to if (metric == BookGraphMetric.PAGES) (book.currentPage.coerceAtLeast(0)).toLong() else book.readingSeconds
-        } else sessions.filter { row ->
-            val date = bookLocalDate(row.session.activityAt)
-            !row.session.excludeFromStatistics && date != null && !date.isBefore(periodStart) && !date.isAfter(periodEnd)
-        }.groupBy { it.session.bookId }.values.map { group ->
-            group.first().bookTitle to group.sumOf { if (metric == BookGraphMetric.PAGES) it.session.pagesRead.toLong() else it.session.durationSeconds }
+        // Resolve from the full history before filtering, so February starts at its actual accumulated page.
+        val resolvedSessions = bookSessionsWithPageFallback(sessions.map { it.session })
+        val periodSessions = if (breakdownAllTime) resolvedSessions else resolvedSessions.filter { session ->
+            val date = bookLocalDate(session.activityAt)
+            !session.excludeFromStatistics && date != null && !date.isBefore(periodStart) && !date.isAfter(periodEnd)
         }
+        val rows = bookWorkStatistics(statsBooks, periodSessions, breakdownAllTime)
         Dialog(onDismissRequest = { breakdownMetric = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             Column(Modifier.fillMaxWidth().padding(16.dp).heightIn(max = LocalConfiguration.current.screenHeightDp.dp * 0.78f)
                 .clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surface)
@@ -383,12 +383,16 @@ internal fun BookStatsContent(
                 }
                 Text(if (breakdownAllTime) "All time" else "$periodStart – $periodEnd", style = MaterialTheme.typography.labelMedium)
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    val visible = rows.filter { it.second > 0 }.sortedByDescending { it.second }
+                    fun value(row: BookWorkStatistics) = if (metric == BookGraphMetric.PAGES) row.pages else row.seconds
+                    val visible = rows.filter { value(it) > 0 }.sortedByDescending { value(it) }
                     if (visible.isEmpty()) item { Text("No reading in this period.") }
-                    items(visible) { (title, value) ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                            Text(if (metric == BookGraphMetric.PAGES) "$value pages" else bookFormatDuration(value), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
+                    items(visible) { row ->
+                        Row(Modifier.fillMaxWidth().fittedClickable(RoundedCornerShape(8.dp)) { breakdownMetric = null; onOpenPartBook(row.bookId) }, horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text(row.title, style = MaterialTheme.typography.bodyMedium)
+                                if (row.parentTitle.isNotBlank()) Text(row.parentTitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                            }
+                            Text(if (metric == BookGraphMetric.PAGES) "${row.pages} pages" else bookFormatDuration(row.seconds), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
                         }
                         HorizontalDivider(Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                     }
@@ -419,7 +423,9 @@ internal fun BookStatsContent(
                 showReadingProgress = false
                 onOpenGlobalSessions()
             },
-            onDismiss = { showReadingProgress = false }
+            onDismiss = { showReadingProgress = false },
+            completedParts = bookWorkStatistics(statsBooks, sessions.map { it.session }, true).filter { it.parentTitle.isNotBlank() },
+            onOpenPartBook = { showReadingProgress = false; onOpenPartBook(it) }
         )
     }
     if (showYearBooks) {

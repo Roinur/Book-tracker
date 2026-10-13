@@ -27,6 +27,8 @@ class BookGoalTest {
         val after = bookGoalProgress(book(page = 130), deadline(), listOf(session(1, 30)), today)
         assertEquals(50L, start.todayTarget); assertEquals(start.todayTarget, after.todayTarget)
         assertEquals(20L, after.todayRemaining)
+        assertEquals(6000L, after.dailySeconds)
+        assertEquals(2400L, after.todaySeconds)
         val tomorrow = bookGoalProgress(book(), deadline(), emptyList(), today.plusDays(1))
         assertEquals(67L, tomorrow.todayTarget)
     }

@@ -4,6 +4,7 @@ import java.time.LocalDate
 
 internal data class ReadingGoalProgress(val label: String, val current: Int, val target: Int, val unit: String) {
     val enabled get() = target > 0
+    val fraction get() = if (enabled) (current.toFloat() / target).coerceIn(0f, 1f) else 0f
     val remaining get() = (target - current).coerceAtLeast(0)
     val summary get() = if (enabled) "$label: $current / $target $unit" else "$label: Not set"
     val notificationLine get() = if (!enabled) summary else

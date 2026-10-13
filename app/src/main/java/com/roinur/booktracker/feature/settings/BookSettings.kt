@@ -61,6 +61,10 @@ internal fun BookSettingsContent(
             onPickBackupFolder = onPickBackupFolder
         )
         OutlinedButton(onClick = onCheckBackup, enabled = !vm.importBusy, modifier = Modifier.fillMaxWidth()) { Text("Check backup") }
+        BookSectionCard {
+            BookDriveBackupSettings(allowed = !vm.importBusy && !vm.backupBusy && vm.pendingTrackerImport == null && vm.pendingLegacyImport == null,
+                onRestore = vm::previewCloudBackup)
+        }
         BookPanel(contentPadding = PaddingValues(0.dp)) {
             BookDisclosureHeader("Recovery copies", null, recoveryExpanded,
                 "${vm.recoveryCopies.size} ${if (vm.recoveryCopies.size == 1) "copy" else "copies"}") { recoveryExpanded = !recoveryExpanded }
@@ -124,8 +128,8 @@ internal fun BookSettingsActionPanel(
             OutlinedButton(onClick = onPickBackupFolder, modifier = Modifier.weight(1f)) {
                 Text("Backup folder")
             }
-            OutlinedButton(onClick = vm::backupNow, modifier = Modifier.weight(1f)) {
-                Text("Backup now")
+            OutlinedButton(onClick = vm::backupNow, enabled = !vm.backupBusy, modifier = Modifier.weight(1f)) {
+                Text(if (vm.backupBusy) "Backing up…" else "Backup now")
             }
         }
         Button(onClick = vm::toggleBookAutoBackup, modifier = Modifier.fillMaxWidth()) {
@@ -136,5 +140,16 @@ internal fun BookSettingsActionPanel(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        val backup = vm.backupStatus
+        val success = backup.lastSuccessAtMs.takeIf { it > 0L }?.let {
+            java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneId.systemDefault())
+                .format(java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy · HH:mm"))
+        }
+        Text(if (success == null) "No verified backup recorded yet" else "Last verified backup: $success",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (backup.error.isNotBlank()) {
+            Text("Last backup failed: ${backup.error}", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error)
+        }
     }
 }

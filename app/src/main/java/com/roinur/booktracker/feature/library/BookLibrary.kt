@@ -83,6 +83,12 @@ internal fun BookLibraryHeader(
 ) {
     val highlightedBook = mostRecentlyReadBook(vm.statsBooks, vm.allBookSessions, vm.activeBookId)
     var showLayoutDialog by rememberSaveable { mutableStateOf(false) }
+    var partsBookId by rememberSaveable { mutableStateOf<Int?>(null) }
+    vm.statsBooks.firstOrNull { it.id == partsBookId }?.let { book ->
+        val history = vm.allBookSessions.map { it.session }
+        val pace = remember(book, history, vm.statsBooks, vm.collectionTypes) { bookReadingPace(book, history, vm.statsBooks, vm.collectionTypes) }
+        BookPartsOverview(book, history, pace.pagesPerHour, onRating = { part, rating -> vm.updatePartRating(book.id, part, rating) }) { partsBookId = null }
+    }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         highlightedBook?.let { book ->
             val liveSeconds = if (vm.activeBookId == book.id) {
@@ -148,13 +154,7 @@ internal fun BookLibraryHeader(
                                     maxLines = 1
                                 )
                             }
-                            LinearProgressIndicator(
-                                progress = { book.progressFraction },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(4.dp)
-                                    .clip(RoundedCornerShape(99.dp))
-                            )
+                            BookPartsProgressBar(book, Modifier.fillMaxWidth(), onOpenParts = { partsBookId = book.id })
                         }
                         Button(
                             onClick = { onContinue(book.id) },

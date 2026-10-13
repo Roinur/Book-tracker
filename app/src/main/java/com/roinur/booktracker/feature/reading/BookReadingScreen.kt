@@ -69,6 +69,9 @@ internal fun BookReadingSessionScreen(
     countdownEndMs: Long,
     countdownTotalMs: Long,
     nowMs: Long,
+    sessions: List<BookReadingSessionRow>,
+    fallbackPagesPerHour: Double?,
+    onPartRating: (BookPart, Int) -> Unit,
     modifier: Modifier = Modifier,
     onStop: () -> Unit,
     onPause: () -> Unit,
@@ -77,6 +80,15 @@ internal fun BookReadingSessionScreen(
 ) {
     val elapsed = bookActiveElapsedSeconds(activeStartedAtMs, nowMs, activePausedAtMs, activePausedTotalMs)
     val paused = activePausedAtMs > 0L
+    var showParts by rememberSaveable(book.id) { mutableStateOf(false) }
+    if (showParts) BookPartsOverview(book, sessions, fallbackPagesPerHour, onPartRating) { showParts = false }
+    val currentPart = book.currentPart()
+    val remainingPartSeconds = remember(book, sessions, fallbackPagesPerHour) {
+        currentPart?.let { part ->
+            val timed = bookSessionsWithPageFallback(sessions.filter { it.bookId == book.id }).filter { !it.excludeFromStatistics && it.pagesRead > 0 && it.durationSeconds > 0 }
+            bookPartRemainingSeconds(part, book.currentPage, bookPartReading(listOf(part), timed).single(), fallbackPagesPerHour)
+        }
+    }
     val countdownRemainingMs = (countdownEndMs - nowMs).coerceAtLeast(0L)
     val countdownActive = countdownRemainingMs > 0L
     val countdownProgress = if (countdownActive && countdownTotalMs > 0L) {
@@ -95,7 +107,7 @@ internal fun BookReadingSessionScreen(
             .background(MaterialTheme.colorScheme.surfaceContainerLowest)
     ) {
         BookCover(
-            book = book,
+            book = book.copy(coverUrl = currentPart?.coverUrl?.ifBlank { book.coverUrl } ?: book.coverUrl),
             modifier = Modifier
                 .matchParentSize()
                 .blur(18.dp)
@@ -112,12 +124,18 @@ internal fun BookReadingSessionScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            Text("You are reading", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(currentPart?.title ?: "You are reading", style = MaterialTheme.typography.titleMedium,
+                color = if (currentPart != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = if (currentPart != null) Modifier.fittedClickable(RoundedCornerShape(8.dp)) { showParts = true } else Modifier)
             Text(
-                text = if (book.pageCount > 0) "${book.currentPage}/${book.pageCount}" else "${book.currentPage} pages",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                text = if (currentPart != null) "Part · p.${book.currentPage}–${currentPart.endPage} · ${currentPart.endPage - book.currentPage} pages left"
+                    else if (book.pageCount > 0) "${book.currentPage}/${book.pageCount}" else "${book.currentPage} pages",
+                style = if (currentPart != null) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis
             )
+            if (remainingPartSeconds != null && remainingPartSeconds > 0) Text("~${bookFormatDuration(remainingPartSeconds)} left in this part",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             Text(
                 book.title,
                 style = MaterialTheme.typography.headlineMedium,

@@ -83,6 +83,7 @@ internal fun BookDetailCard(
     onStart: () -> Unit,
     onStatusChange: (BookStatus) -> Unit,
     onRating: (Int) -> Unit,
+    onPartRating: (BookPart, Int) -> Unit,
     onRatingPreview: (Int) -> Unit,
     onRatingCancel: () -> Unit,
     onPickCover: () -> Unit,
@@ -93,6 +94,7 @@ internal fun BookDetailCard(
     onAddManual: () -> Unit,
     onOpenGraph: () -> Unit
 ) {
+    var showParts by rememberSaveable(book.id) { mutableStateOf(false) }
     var showBookGoal by rememberSaveable(book.id) { mutableStateOf(false) }
     val goalToday = Instant.ofEpochMilli(nowMs).atZone(ZoneId.systemDefault()).toLocalDate()
     val goalProgress = remember(book, bookGoal, allGoalSessions, goalToday, allPaceBooks, collectionTypes) {
@@ -109,6 +111,7 @@ internal fun BookDetailCard(
     val readingPace = remember(book, allGoalSessions, allPaceBooks, collectionTypes) {
         bookReadingPace(book, allGoalSessions, allPaceBooks, collectionTypes)
     }
+    if (showParts) BookPartsOverview(book, sessions, readingPace.pagesPerHour, onPartRating) { showParts = false }
     val bookPagesPerHour = readingPace.pagesPerHour?.toFloat() ?: 0f
     val bookCollections = remember(book.collections) { splitBookCollections(book.collections) }
     var showCollectionsDialog by rememberSaveable { mutableStateOf(false) }
@@ -171,13 +174,7 @@ internal fun BookDetailCard(
                                 maxLines = 1
                             )
                         }
-                        LinearProgressIndicator(
-                            progress = { book.progressFraction },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(4.dp)
-                                .clip(RoundedCornerShape(99.dp))
-                        )
+                        BookPartsProgressBar(book, Modifier.fillMaxWidth(), onOpenParts = { showParts = true })
                     }
                     Button(
                         onClick = onStart,
@@ -236,7 +233,8 @@ internal fun BookDetailCard(
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-            BookGoalCard(book, bookGoal, goalProgress, onConfigure = { showBookGoal = true }, modifier = Modifier.weight(1f), openRequest = goalOpenRequest)
+            BookGoalCard(book, bookGoal, goalProgress, onConfigure = { showBookGoal = true }, modifier = Modifier.weight(1f), openRequest = goalOpenRequest,
+                sessions = sessions, fallbackPagesPerHour = readingPace.pagesPerHour, onPartRating = onPartRating)
             BookPanel(
                 modifier = Modifier
                     .weight(1f)

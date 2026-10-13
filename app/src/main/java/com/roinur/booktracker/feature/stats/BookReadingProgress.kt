@@ -56,7 +56,9 @@ internal fun BookReadingProgressDialog(
     noteCount: Int,
     onOpenGlobalNotes: (BookNoteKind) -> Unit,
     onOpenGlobalSessions: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    completedParts: List<BookWorkStatistics> = emptyList(),
+    onOpenPartBook: (Int) -> Unit = {}
 ) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
@@ -94,7 +96,9 @@ internal fun BookReadingProgressDialog(
                     wordCount = wordCount,
                     noteCount = noteCount,
                     onOpenGlobalNotes = onOpenGlobalNotes,
-                    onOpenGlobalSessions = onOpenGlobalSessions
+                    onOpenGlobalSessions = onOpenGlobalSessions,
+                    completedParts = completedParts,
+                    onOpenPartBook = onOpenPartBook
                 )
             }
         }
@@ -117,7 +121,9 @@ internal fun BookReadingProgressPanel(
     wordCount: Int,
     noteCount: Int,
     onOpenGlobalNotes: (BookNoteKind) -> Unit,
-    onOpenGlobalSessions: () -> Unit
+    onOpenGlobalSessions: () -> Unit,
+    completedParts: List<BookWorkStatistics> = emptyList(),
+    onOpenPartBook: (Int) -> Unit = {}
 ) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text(period, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -133,6 +139,21 @@ internal fun BookReadingProgressPanel(
         Text("All time", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         BookProgressMetricRow("library", "Books finished", booksRead.toString(), "")
         BookProgressMetricRow("streak", "Longest streak", longestStreak.toString(), "days")
+        if (completedParts.isNotEmpty()) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            Text("Completed parts", style = MaterialTheme.typography.titleSmall)
+            completedParts.forEach { work ->
+                Row(Modifier.fillMaxWidth().fittedClickable(RoundedCornerShape(8.dp)) { onOpenPartBook(work.bookId) }.padding(vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (work.coverUrl.isNotBlank()) BookCoverImage(work.coverUrl, work.title, Modifier.size(32.dp, 48.dp).clip(RoundedCornerShape(6.dp)))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(work.title, style = MaterialTheme.typography.bodyMedium)
+                        Text(work.parentTitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    }
+                    Text("${work.pages} pages", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             BookNoteStatTile(BookNoteKind.NOTE, noteCount, { onOpenGlobalNotes(BookNoteKind.NOTE) }, Modifier.weight(1f))

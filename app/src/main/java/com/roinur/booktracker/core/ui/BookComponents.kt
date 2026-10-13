@@ -100,8 +100,10 @@ internal fun BookCoverImage(
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = title.trim().take(2).uppercase(Locale.US).ifBlank { "BK" },
-                style = MaterialTheme.typography.titleMedium,
+                text = title.trim().take(2).trimEnd().uppercase(Locale.US).ifBlank { "BK" },
+                style = MaterialTheme.typography.titleMedium.copy(platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                maxLines = 1,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
             )

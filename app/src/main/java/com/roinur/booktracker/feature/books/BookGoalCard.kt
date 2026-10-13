@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.StrokeCap
@@ -23,7 +24,10 @@ import com.roinur.booktracker.BookFitText as Text
 @Composable
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 internal fun BookGoalCard(book: BookRow, goal: BookGoal?, progress: BookGoalProgress?, onConfigure: () -> Unit,
-                          modifier: Modifier = Modifier, openRequest: Int = 0) {
+                          modifier: Modifier = Modifier, openRequest: Int = 0, sessions: List<BookReadingSessionRow> = emptyList(),
+                          fallbackPagesPerHour: Double? = null, onPartRating: (BookPart, Int) -> Unit) {
+    var showParts by rememberSaveable(book.id) { mutableStateOf(false) }
+    if (showParts) BookPartsOverview(book, sessions, fallbackPagesPerHour, onPartRating) { showParts = false }
     val pager = rememberPagerState(initialPage = if (goal != null && progress?.completed == false) 1 else 0, pageCount = { 2 })
     LaunchedEffect(book.id, goal != null) { pager.scrollToPage(if (goal != null && progress?.completed == false) 1 else 0) }
     LaunchedEffect(book.id, openRequest) { if (openRequest > 0) pager.scrollToPage(1) }
@@ -33,8 +37,7 @@ internal fun BookGoalCard(book: BookRow, goal: BookGoal?, progress: BookGoalProg
                 BookMetricLabel(R.drawable.ic_book_24, "Pages read")
                 Text(if (book.pageCount > 0) "${book.currentPage} / ${book.pageCount}" else "${book.currentPage}",
                     style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                LinearProgressIndicator(progress = { book.progressFraction }, strokeCap = StrokeCap.Round,
-                    modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape))
+                BookPartsProgressBar(book, Modifier.fillMaxWidth(), onOpenParts = { showParts = true })
             } else Column(Modifier.fillMaxSize().clip(RoundedCornerShape(6.dp)).padding(horizontal = 2.dp).fittedClickable(RoundedCornerShape(6.dp), onClick = onConfigure),
                 verticalArrangement = Arrangement.SpaceEvenly) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -54,7 +57,7 @@ internal fun BookGoalCard(book: BookRow, goal: BookGoal?, progress: BookGoalProg
                         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                     LinearProgressIndicator(progress = { progress.todayFraction }, strokeCap = StrokeCap.Round,
                         modifier = Modifier.fillMaxWidth().height(3.dp).clip(CircleShape))
-                    Text("${progress.remainingPages}p · ${progress.daysRemaining}d" + progress.remainingSeconds?.let { " · ~${bookFormatCompactHours(it)}" }.orEmpty(),
+                    Text("${progress.remainingPages}p · ${progress.daysRemaining}d" + progress.dailySeconds?.let { " · ~${bookFormatCompactHours(it)}/day" }.orEmpty(),
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }

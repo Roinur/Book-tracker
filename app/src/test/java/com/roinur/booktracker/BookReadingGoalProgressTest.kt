@@ -6,6 +6,11 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 class BookReadingGoalProgressTest {
+    @Test fun ringFillIsBoundedAndUnsetGoalsStayEmpty() {
+        assertEquals(0f, ReadingGoalProgress("Daily", 100, 0, "pages").fraction, 0.001f)
+        assertEquals(0.5f, ReadingGoalProgress("Daily", 25, 50, "pages").fraction, 0.001f)
+        assertEquals(1f, ReadingGoalProgress("Daily", 100, 50, "pages").fraction, 0.001f)
+    }
     private val today = LocalDate.of(2026, 10, 3)
     private fun point(day: String, value: Int) = DailyActivityPoint(LocalDate.parse(day), value, 1)
     private val stats = BookStats(finishedThisYear = 14,

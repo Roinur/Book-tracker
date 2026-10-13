@@ -80,7 +80,8 @@ data class BookSeed(
     val pageCount: Int,
     val coverUrl: String,
     val sourceUrl: String,
-    val collections: String
+    val collections: String,
+    val parts: List<BookPart>? = null
 )
 
 data class BookRow(
@@ -101,7 +102,8 @@ data class BookRow(
     val startedAt: String,
     val finishedAt: String,
     val lastReadAt: String,
-    val readingSeconds: Long
+    val readingSeconds: Long,
+    val parts: List<BookPart> = emptyList()
 ) {
     val progressFraction: Float
         get() = if (pageCount <= 0) 0f else (currentPage.toFloat() / pageCount.toFloat()).coerceIn(0f, 1f)

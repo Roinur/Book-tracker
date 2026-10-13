@@ -57,6 +57,9 @@ internal fun BookAddScreen(
     var editedCollectionName by rememberSaveable { mutableStateOf("") }
     var editedCollectionTypeName by rememberSaveable { mutableStateOf("") }
     var showRemoveConfirm by rememberSaveable { mutableStateOf(false) }
+    var showPartsEditor by rememberSaveable { mutableStateOf(false) }
+    if (showPartsEditor) BookPartsEditor(vm, vm.draftParts, vm.pageCountInput.toIntOrNull() ?: 0,
+        onDismiss = { showPartsEditor = false }, onApply = { vm.updateDraftParts(it); showPartsEditor = false })
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -100,12 +103,17 @@ internal fun BookAddScreen(
             onValueChange = vm::updateAuthorsInput,
             label = "Author"
         )
-        BookFormTextField(
-            value = vm.pageCountInput,
-            onValueChange = vm::updatePageCountInput,
-            label = "Total pages",
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Bottom) {
+            BookFormTextField(
+                value = vm.pageCountInput,
+                onValueChange = vm::updatePageCountInput,
+                label = "Total pages",
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f)
+            )
+            OutlinedButton(onClick = { showPartsEditor = true }, shape = RoundedCornerShape(8.dp), modifier = Modifier.height(56.dp)) {
+                BookButtonLabel(R.drawable.ic_list_24, if (vm.draftParts.isEmpty()) "Parts" else "Parts (${vm.draftParts.size})")
+            }
+        }
         BookCollectionPicker(
             selected = splitBookCollections(vm.collectionsInput),
             suggestions = vm.collectionSuggestions,

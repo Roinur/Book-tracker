@@ -70,6 +70,10 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private val backups = BookBackupService(db, application)
+    private val backupStatusStore = com.roinur.booktracker.data.backup.BookBackupStatusStore(application)
+    internal var readingSessionConflict by mutableStateOf(false)
+        private set
+    internal fun dismissReadingSessionConflict() { readingSessionConflict = false }
     private val recovery = com.roinur.booktracker.data.backup.BookRecoveryStore(java.io.File(application.filesDir, "recovery_copies"))
     internal var recoveryCopies by mutableStateOf(recovery.list())
         private set
@@ -125,8 +129,7 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
                     val embeddedUrls = if (assets == null) emptySet() else (0 until assets.length()).map { assets.getJSONObject(it) }
                         .filter { !it.optBoolean("missing") }.map { it.getString("url") }.toSet()
                     var localCovers = 0
-                    for (i in 0 until books.length()) {
-                        val cover = books.getJSONObject(i).optString("cover_url")
+                    for (cover in com.roinur.booktracker.data.backup.BookPortableCovers.references(books)) {
                         if (cover.isNotBlank()) {
                             covers++
                             if (cover !in embeddedUrls && !cover.startsWith("https://") && !cover.startsWith("http://") && !cover.startsWith("data:")) localCovers++
@@ -183,6 +186,9 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         private set
     var editingBookId by mutableStateOf<Int?>(null)
         private set
+    internal var draftParts by mutableStateOf<List<BookPart>>(emptyList())
+        private set
+    internal fun updateDraftParts(parts: List<BookPart>) { draftParts = validateBookParts(parts, pageCountInput.toIntOrNull() ?: 0) }
     var searchInput by mutableStateOf("")
         private set
     var statusMessage by mutableStateOf("Ready.")
@@ -263,15 +269,21 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         private set
     var bookAutoBackupEnabled by mutableStateOf(prefs.getBoolean(KEY_BOOK_AUTO_BACKUP_ENABLED, false))
         private set
+    internal var backupStatus by mutableStateOf(backupStatusStore.load(bookAutoBackupTreeUri))
+        private set
+    var backupBusy by mutableStateOf(false)
+        private set
+    private var backupPending = false
 
     init {
+        com.roinur.booktracker.data.backup.drive.DriveBackupSync.syncSchedule(application)
         reload()
     }
 
     fun reload() {
         statsBooks = db.listBooks("", BookSortField.ADDED, false)
-        val coverUrls = statsBooks.map { it.coverUrl }.filter { it.startsWith("http://") || it.startsWith("https://") }.toSet()
-        val allCoverUrls = statsBooks.map { it.coverUrl }.filter { it.isNotBlank() }.toSet()
+        val allCoverUrls = statsBooks.flatMap { book -> listOf(book.coverUrl) + book.parts.map { it.coverUrl } }.filter { it.isNotBlank() }.toSet()
+        val coverUrls = allCoverUrls.filter { it.startsWith("http://") || it.startsWith("https://") }.toSet()
         if (retainedCoverUrls != allCoverUrls) {
             retainedCoverUrls = allCoverUrls
             val cache = BookCoverCache.get(getApplication())
@@ -570,6 +582,12 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         BookGoalNotifications.update(getApplication(), statsBooks, bookGoals, allBookSessions.map { it.session }, collectionTypes, readingGoals, stats)
     }
 
+    internal fun updateGoalNotificationColors(accent: Int, track: Int) {
+        if (prefs.getInt(KEY_GOAL_NOTIFICATION_ACCENT, 0) == accent && prefs.getInt(KEY_GOAL_NOTIFICATION_TRACK, 0) == track) return
+        prefs.edit().putInt(KEY_GOAL_NOTIFICATION_ACCENT, accent).putInt(KEY_GOAL_NOTIFICATION_TRACK, track).apply()
+        syncGoalNotifications()
+    }
+
     fun updateReadingGoalNotifications(enabled: Boolean) {
         readingGoalNotificationsEnabled = enabled
         prefs.edit().putBoolean(KEY_READING_GOAL_NOTIFICATIONS_ENABLED, enabled).apply()
@@ -670,6 +688,7 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         draftCoverUrl = book.coverUrl
         draftSourceUrl = book.sourceUrl
         collectionsInput = book.collections
+        draftParts = book.parts
         statusMessage = "Editing ${book.title}."
     }
 
@@ -720,12 +739,17 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
             pageCount = pageCountInput.toIntOrNull()?.coerceAtLeast(0) ?: 0,
             coverUrl = draftCoverUrl,
             sourceUrl = draftSourceUrl,
-            collections = normalizeBookCollections(collectionsInput)
+            collections = normalizeBookCollections(collectionsInput),
+            parts = draftParts.takeIf { editingBookId != null || it.isNotEmpty() }
         )
+        try { validateBookParts(draftParts, seed.pageCount) } catch (error: IllegalArgumentException) {
+            statusMessage = error.message ?: "Check the book parts."; return
+        }
         viewModelScope.launch {
             val editingId = editingBookId
             if (editingId != null && !checkpoint("before-book-edit")) return@launch
-            val id = withContext(Dispatchers.IO) { db.upsertBook(seed, editingId) }
+            val saved = withContext(Dispatchers.IO) { runCatching { db.upsertBook(seed, editingId) } }
+            val id = saved.getOrElse { statusMessage = "Could not save book: ${it.message}"; return@launch }
             clearDraft()
             selectedBookId = id.takeIf { it > 0 }
             statusMessage = "Saved $title."
@@ -741,6 +765,7 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
             return true
         }
         if (activeBookId != null) {
+            readingSessionConflict = true
             statusMessage = "A reading session is already open. Finish it before starting another book."
             return false
         }
@@ -1221,6 +1246,14 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    internal fun updatePartRating(bookId: Int, part: BookPart, rating: Int) {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { db.updatePartRating(bookId, part, rating) } }
+            if (result.isSuccess) { reload(); maybeAutoBackup() }
+            else statusMessage = "Could not save part rating: ${result.exceptionOrNull()?.message.orEmpty()}"
+        }
+    }
+
     fun updateNotes(bookId: Int, notes: String) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) { db.updateNotes(bookId, notes) }
@@ -1306,6 +1339,19 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
                 onSuccess = { "Exported and verified $it ${if (it == 1) "book" else "books"}." },
                 onFailure = { "Export failed: ${it.message ?: "unknown error"}" }
             )
+        }
+    }
+
+    internal fun previewCloudBackup(payload: String) {
+        if (importBusy || pendingLegacyImport != null || pendingTrackerImport != null) return
+        importBusy = true
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching {
+                LegacyMigration.previewTrackerBackup(payload.toByteArray(Charsets.UTF_8))
+            } }
+            result.onSuccess { pendingTrackerImport = it; statusMessage = "Drive backup checked. Review before importing." }
+                .onFailure { statusMessage = "Drive restore failed: ${it.message}. Existing data kept." }
+            importBusy = false
         }
     }
 
@@ -1399,6 +1445,7 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
     fun setBookAutoBackupFolder(uri: Uri) {
         bookAutoBackupTreeUri = uri.toString()
         prefs.edit().putString(KEY_BOOK_AUTO_BACKUP_TREE_URI, bookAutoBackupTreeUri).apply()
+        backupStatus = backupStatusStore.load(bookAutoBackupTreeUri)
         statusMessage = "Backup folder set."
     }
 
@@ -1410,12 +1457,14 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun backupNow() {
+        if (backupBusy) return
         val rawTreeUri = bookAutoBackupTreeUri
         if (rawTreeUri.isBlank()) {
             statusMessage = "Choose a backup folder first."
             return
         }
         val context = getApplication<Application>()
+        backupBusy = true
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
@@ -1442,10 +1491,22 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
                     fileName
                 }
             }
+            val previousStatus = backupStatusStore.load(rawTreeUri)
+            val checkedStatus = result.fold(
+                onSuccess = { previousStatus.succeeded(System.currentTimeMillis()) },
+                onFailure = { previousStatus.failed(System.currentTimeMillis(), it.message ?: "Unknown error") }
+            )
+            backupStatusStore.record(rawTreeUri, checkedStatus)
+            backupStatus = backupStatusStore.load(bookAutoBackupTreeUri)
+            backupBusy = false
             statusMessage = result.fold(
                 onSuccess = { "Backup written: $it" },
                 onFailure = { "Backup failed: ${it.message ?: "unknown error"}" }
             )
+            if (backupPending) {
+                backupPending = false
+                maybeAutoBackup()
+            }
         }
     }
 
@@ -1454,7 +1515,10 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private fun maybeAutoBackup() {
-        if (bookAutoBackupEnabled && bookAutoBackupTreeUri.isNotBlank()) backupNow()
+        com.roinur.booktracker.data.backup.drive.DriveBackupSync.enqueue(getApplication())
+        if (bookAutoBackupEnabled && bookAutoBackupTreeUri.isNotBlank()) {
+            if (backupBusy) backupPending = true else backupNow()
+        }
     }
 
     private fun writeAndVerifyBackup(context: Context, uri: Uri, backup: JSONObject) {
@@ -1483,9 +1547,11 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         draftCoverUrl = ""
         draftSourceUrl = ""
         collectionsInput = ""
+        draftParts = emptyList()
     }
 
     private fun clearActiveBook() {
+        readingSessionConflict = false
         activeBookId = null
         activeStartedAtMs = 0L
         activePausedAtMs = 0L

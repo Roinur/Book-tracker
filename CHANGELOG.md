@@ -2,9 +2,36 @@
 
 ## 1.1
 
-Book Tracker 1.1 adds Reading map, collection progress, bulk collection editing and per-book reading goals. It also improves gallery performance, navigation, metadata lookup, graphs and backups.
+Book Tracker 1.1 adds Reading map, typed collections and bulk editing, collection progress, per-book goals, compendium parts, contents-page scanning and optional Google Drive backup. It also improves gallery performance, navigation, metadata lookup, graphs and data protection.
 
-This release covers the changes from the original 1.0 release (build 33) to 1.1 (build 77).
+This release covers the changes from the original 1.0 release (build 33) to 1.1 (build 88).
+
+### Compendium parts
+
+- Define named works with inclusive page ranges inside a book. End pages include the printed page; 3 through 74 contains 72 pages. Older stored ranges are converted compatibly.
+- Give each part its own cover and rating through the existing cover-selection tools. Part covers are cached locally and included in portable backups.
+- Assign parts in compact rows; expand a row when editing its title or page range.
+- Inspect parts through segmented progress bars in Continue reading, Pages read and the reading screen. See page counts, completed progress, reading time and estimated remaining time per work.
+- Allocate session time proportionally to pages read in each part. Imported sessions without a reached page use chronologically accumulated pages, anchored by explicit endpoints.
+- Completed parts appear as individual works in statistics until the parent compendium is finished. Totals and yearly book-goal counts are not inflated by the parts.
+- Keep the pages/time breakdown free of part-only thumbnails, consistent with other books.
+
+### Scan contents pages
+
+- Use the camera or import a photo from Assign parts. On-device text recognition proposes titles in reading order and start pages when available.
+- Review and deselect proposals, combine overlapping photos without duplicate works, and refine titles and inclusive page ranges before applying.
+- Recover isolated page numbers through an extra recognition pass over the enlarged number column. Match angled rows using their geometry and ignore roman page-number fragments as titles.
+- Camera capture and gallery import use the same recognition path. Unreadable page numbers remain editable instead of being invented.
+
+### Google Drive backup
+
+- Connect a Google account for optional complete library backups. Connecting alone does not enable uploads.
+- Back up books, sessions, notes, collection types, reading and book goals, compendium parts, preserved original imports and available portable cover images.
+- Keep five verified generations in the separate Book Tracker Backups folder. Uploads are downloaded and checksum-checked before publication and rotation of older versions.
+- Enable automatic backup with an unmetered-network option, or upload manually. Unchanged library contents do not force duplicate automatic uploads.
+- Detect another device changing the latest backup before publishing. Account connection state and authorization tokens are excluded from portable backups.
+- Download a version into the existing import preview. Restoration requires confirmation and an empty library, protecting existing data from replacement or duplicate imports.
+- Show the latest verified upload and operation status. Disconnecting retains cloud files. Drive files are not end-to-end encrypted by Book Tracker.
 
 ### Per-book reading goals
 
@@ -22,6 +49,7 @@ This release covers the changes from the original 1.0 release (build 33) to 1.1 
 - Expand the notification to see all three targets, progress and remaining amounts. Tap it to open Reading goals.
 - Reading goals and individual Book goals have independent notification switches in Settings. Keep either, both or neither enabled.
 - Progress matches the app's goal circles, follows the device's local calendar and refreshes after saved reading and at the next day.
+- The collapsed notification shows three horizontal progress rings; expanding it adds labels, targets and remaining amounts. Unfilled ring tracks have clearer contrast.
 
 ### Reading map
 
@@ -111,7 +139,7 @@ This release covers the changes from the original 1.0 release (build 33) to 1.1 
 - Expand Page calculator when finishing a session. Enter the printed start and end pages to calculate the pages read and update the book's position, useful for compendiums and different page numbering.
 - Manual logging keeps note entry and action buttons accessible when the keyboard is open.
 - Reading notifications open the matching session, with its book and session identity checked before resuming it.
-- Portable JSON backups include available local cover images, collection types and book goals along with books, sessions, notes and settings.
+- Portable JSON backups include available local cover images, collection types and book goals along with books, sessions, notes and preserved import data.
 - Check backup validates a selected file and shows a report before restoration.
 - Keep the latest five local recovery copies before imports, book/session edits and deletions. Export a recovery copy from Settings; a failed recovery copy cancels the protected change.
 - Recovery copies and Preserved import data are collapsible, with export actions and clearer record counts.

@@ -154,6 +154,7 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
                 columns += cursor.getString(cursor.getColumnIndexOrThrow("name")).orEmpty()
             }
         }
+        if ("parts_json" !in columns) db.execSQL("ALTER TABLE books ADD COLUMN parts_json TEXT NOT NULL DEFAULT '[]'")
         if ("finished_at_manual" !in columns) db.execSQL("ALTER TABLE books ADD COLUMN finished_at_manual INTEGER NOT NULL DEFAULT 0")
         if ("collections" !in columns) {
             db.execSQL("ALTER TABLE books ADD COLUMN collections TEXT NOT NULL DEFAULT ''")
@@ -181,6 +182,7 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
 
     fun upsertBook(seed: BookSeed, preferredId: Int? = null): Int {
         val existing = preferredId?.let { getBook(it) } ?: seed.isbn.takeIf { it.isNotBlank() }?.let { findBookByIsbn(it) }
+        val parts = validateBookParts(seed.parts ?: existing?.parts.orEmpty(), seed.pageCount)
         val now = Instant.now().toString()
         val values = ContentValues().apply {
             put("isbn", seed.isbn)
@@ -190,6 +192,7 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
             put("cover_url", seed.coverUrl)
             put("source_url", seed.sourceUrl)
             put("collections", normalizeBookCollections(seed.collections))
+            put("parts_json", BookPartsStorage.encode(parts))
         }
         return if (existing != null) {
             writableDatabase.update("books", values, "id = ?", arrayOf(existing.id.toString()))
@@ -779,6 +782,19 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
         )
     }
 
+    fun updatePartRating(bookId: Int, part: BookPart, rating: Int) {
+        val database = writableDatabase
+        database.beginTransaction()
+        try {
+            val current = getBook(bookId) ?: error("Book no longer exists.")
+            val index = current.parts.indexOfFirst { it.startPage == part.startPage && it.endPage == part.endPage && it.title == part.title }
+            check(index >= 0) { "Part changed; reopen Parts and try again." }
+            val parts = current.parts.mapIndexed { i, value -> if (i == index) value.copy(rating = rating.coerceIn(0, 5)) else value }
+            database.update("books", ContentValues().apply { put("parts_json", BookPartsStorage.encode(parts)) }, "id = ?", arrayOf(bookId.toString()))
+            database.setTransactionSuccessful()
+        } finally { database.endTransaction() }
+    }
+
     fun updateCover(bookId: Int, coverUrl: String) {
         writableDatabase.update(
             "books",
@@ -844,7 +860,8 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
             startedAt = getString(getColumnIndexOrThrow("started_at")).orEmpty(),
             finishedAt = getString(getColumnIndexOrThrow("finished_at")).orEmpty(),
             lastReadAt = getString(getColumnIndexOrThrow("last_read_at")).orEmpty(),
-            readingSeconds = getLong(getColumnIndexOrThrow("reading_seconds")).coerceAtLeast(0L)
+            readingSeconds = getLong(getColumnIndexOrThrow("reading_seconds")).coerceAtLeast(0L),
+            parts = BookPartsStorage.decode(getString(getColumnIndexOrThrow("parts_json")).orEmpty())
         )
     }
 }

@@ -31,15 +31,16 @@ internal object ReadingGoalsNotification {
             action = OPEN_ACTION
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val style = NotificationCompat.InboxStyle().setBigContentTitle("Reading goals")
-        progress.rows.forEach { style.addLine(it.notificationLine) }
+        val (compact, expanded) = ReadingGoalsNotificationViews.create(context, progress)
         val notification = NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_book_goal_24)
             .setContentTitle("Reading goals")
             .setContentText(progress.rows.filter { it.enabled }.joinToString(" · ") {
                 "${it.label}: ${it.current}/${it.target} ${it.unit}"
             })
-            .setStyle(style).setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
+            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
+            .setCustomContentView(compact).setCustomBigContentView(expanded)
+            .setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
             .setShowWhen(false).setCategory(NotificationCompat.CATEGORY_PROGRESS).setSilent(true).build()
         try { manager.notify(TAG, ID, notification) } catch (_: SecurityException) { /* Permission changed during refresh. */ }
         return true

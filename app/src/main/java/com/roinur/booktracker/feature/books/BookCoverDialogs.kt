@@ -1,5 +1,11 @@
 package com.roinur.booktracker
 
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.Text
 
 import androidx.compose.foundation.background
@@ -47,6 +53,31 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlin.math.max
+
+/** The same source and search dialogs for an image owned by a draft part. */
+@Composable
+internal fun BookPartCoverChooser(vm: BookTrackerViewModel, title: String, coverUrl: String, onDismiss: () -> Unit, onPick: (String) -> Unit) {
+    val context = LocalContext.current
+    var stage by rememberSaveable { mutableStateOf("source") }
+    val gallery = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            onPick(uri.toString())
+        } else onDismiss()
+    }
+    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
+        val url = bitmap?.let { runCatching { saveCoverBitmapToInternalStorage(context, it) }.getOrNull() }
+        if (url != null) onPick(url) else onDismiss()
+    }
+    if (stage == "source") CoverSourceDialog(onDismiss = onDismiss, coverUrl = coverUrl, bookTitle = title,
+        onGallery = { stage = "external"; gallery.launch(arrayOf("image/*")) },
+        onCamera = { stage = "external"; camera.launch(null) },
+        onSearch = {
+            vm.prepareCoverSearch(listOf(title, vm.authorsInput).filter { it.isNotBlank() }.joinToString(" "))
+            stage = "search"
+        })
+    if (stage == "search") CoverSearchDialog(vm, onDismiss, onPick)
+}
 
 @Composable
 internal fun CoverSourceDialog(

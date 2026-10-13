@@ -17,6 +17,8 @@ internal data class BookGoalProgress(
     val completed: Boolean, val overdue: Boolean
 ) {
     val usesOverallPace: Boolean get() = paceSource == BookPaceSource.OVERALL
+    val dailySeconds: Long? get() = if (todayTarget == 0L) 0L else
+        pagesPerHour?.let { ceil(todayTarget * 3600.0 / it).toLong() }
     val todayFraction: Float get() = if (todayTarget <= 0) 1f else
         (todayPages.toDouble() / todayTarget).toFloat().coerceIn(0f, 1f)
 }

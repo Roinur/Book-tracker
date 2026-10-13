@@ -14,13 +14,21 @@ import java.io.FileOutputStream
 import java.io.ByteArrayOutputStream
 
 internal object BookPortableCovers {
+    fun references(books: JSONArray): Set<String> = buildSet {
+        repeat(books.length()) { index ->
+            val book = books.getJSONObject(index)
+            add(book.optString("cover_url"))
+            com.roinur.booktracker.data.database.BookPartsStorage.decode(book.optString("parts_json"))
+                .forEach { add(it.coverUrl) }
+        }
+    }.filterTo(linkedSetOf()) { it.isNotBlank() }
     fun file(context: Context, url: String) = File(context.filesDir, "portable_covers/${LegacyMigration.hash(url.toByteArray(Charsets.UTF_8))}.img")
     fun prune(context: Context, urls: Set<String>) {
         val keep = urls.map { file(context, it).name }.toSet()
         File(context.filesDir, "portable_covers").listFiles()?.filter { it.isFile && it.name !in keep }?.forEach { it.delete() }
     }
     fun export(context: Context, books: JSONArray, allowRemoteFetch: Boolean = true): JSONArray {
-        val urls = (0 until books.length()).map { books.getJSONObject(it).optString("cover_url") }.filter { it.isNotBlank() }.distinct()
+        val urls = references(books)
         return JSONArray().apply { urls.forEach { url ->
             val bytes = runCatching {
                 val restored = file(context, url)
@@ -93,7 +101,7 @@ internal object BookPortableCovers {
         val assets = root.optJSONArray("cover_assets") ?: return
         val urls = mutableSetOf<String>()
         val books = root.getJSONArray("books")
-        val references = (0 until books.length()).map { books.getJSONObject(it).optString("cover_url") }.toSet()
+        val references = references(books)
         repeat(assets.length()) { i ->
             val asset = assets.getJSONObject(i)
             val url = asset.getString("url")

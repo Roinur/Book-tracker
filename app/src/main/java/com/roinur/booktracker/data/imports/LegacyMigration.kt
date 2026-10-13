@@ -86,6 +86,12 @@ internal object LegacyMigration {
             val array = root.getJSONArray(name)
             repeat(array.length()) { array.getJSONObject(it) }
         }
+        root.getJSONArray("books").let { books ->
+            repeat(books.length()) { index ->
+                val book = books.getJSONObject(index)
+                if (book.has("parts_json")) com.roinur.booktracker.data.database.BookPartsStorage.decode(book.getString("parts_json"), book.optInt("page_count"))
+            }
+        }
         if (format != BACKUP_FORMAT_V1) {
             root.getJSONArray("bookly_sources")
             root.getJSONArray("bookly_links")
@@ -377,7 +383,7 @@ internal object LegacyMigration {
             "Duplicate collection types; nothing imported."
         }
         val tableColumns = linkedMapOf(
-            "books" to setOf("id","isbn","title","authors","page_count","current_page","status","rating","notes","cover_url","source_url","collections","pinned","added_at","started_at","finished_at","finished_at_manual","last_read_at","reading_seconds"),
+            "books" to setOf("id","isbn","title","authors","page_count","current_page","status","rating","notes","cover_url","source_url","collections","pinned","added_at","started_at","finished_at","finished_at_manual","last_read_at","reading_seconds","parts_json"),
             "reading_sessions" to setOf("id","book_id","started_at","ended_at","duration_seconds","duration_milliseconds","pages_read","page_reached","exclude_from_statistics"),
             "reading_notes" to setOf("id","book_id","created_at","page","duration_seconds","kind","note","autosave_key")
         )

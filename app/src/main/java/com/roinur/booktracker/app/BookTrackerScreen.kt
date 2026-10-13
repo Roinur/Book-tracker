@@ -484,6 +484,7 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                                 onStatusChange = { status -> vm.changeStatus(selectedBook, status) },
                                 onCompletionDate = { date -> vm.changeCompletionDate(selectedBook.id, date) },
                                 onRating = { rating -> vm.updateRating(selectedBook.id, rating) },
+                                onPartRating = { part, rating -> vm.updatePartRating(selectedBook.id, part, rating) },
                                 onRatingPreview = { rating ->
                                     holdPopup = BookRatingHoldState(selectedBook.id, rating)
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -518,6 +519,11 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                         } else {
                             BookReadingSessionScreen(
                                 book = selectedBook,
+                                sessions = vm.selectedBookSessions,
+                                fallbackPagesPerHour = remember(selectedBook, vm.allBookSessions, vm.statsBooks, vm.collectionTypes) {
+                                    bookReadingPace(selectedBook, vm.allBookSessions.map { it.session }, vm.statsBooks, vm.collectionTypes).pagesPerHour
+                                },
+                                onPartRating = { part, rating -> vm.updatePartRating(selectedBook.id, part, rating) },
                                 activeStartedAtMs = vm.activeStartedAtMs,
                                 activePausedAtMs = vm.activePausedAtMs,
                                 activePausedTotalMs = vm.activePausedTotalMs,
@@ -592,7 +598,12 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                                         }
                                     },
                                     openReadingGoals = vm.readingGoalsOpenRequested,
-                                    onReadingGoalsOpened = vm::consumeReadingGoalsOpenRequest
+                                    onReadingGoalsOpened = vm::consumeReadingGoalsOpenRequest,
+                                    onOpenPartBook = { id ->
+                                        vm.selectBook(id)
+                                        detailReturnModeName = BookScreenMode.MAIN.name
+                                        screenModeName = BookScreenMode.DETAIL.name
+                                    }
                                 )
                             }
                         }
@@ -747,6 +758,19 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                 }
             }
         }
+    }
+
+    if (vm.readingSessionConflict && activeBook != null) {
+        BookSessionConflictDialog(
+            book = activeBook,
+            seconds = bookActiveElapsedSeconds(vm.activeStartedAtMs, nowMs, vm.activePausedAtMs, vm.activePausedTotalMs),
+            paused = vm.activePausedAtMs > 0L,
+            onDismiss = vm::dismissReadingSessionConflict,
+            onOpen = {
+                vm.dismissReadingSessionConflict()
+                openReading(activeBook.id)
+            }
+        )
     }
 
     holdPopup?.let { popup ->

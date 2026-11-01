@@ -21,8 +21,8 @@ Book Tracker 1.2 on a real device, with the maintainer's own library and reading
 <tr><td><img src="docs/screenshots/book-details.png" width="320" alt="Book details with progress, reading goal, pace and session history"></td><td><img src="docs/screenshots/reading-map.png" width="320" alt="Reading map connecting 147 books across 17 collection families"></td></tr>
 <tr><th>Reading goals</th><th>Reading progress</th></tr>
 <tr><td><img src="docs/screenshots/reading-goals.png" width="320" alt="Daily, monthly and yearly reading goals"></td><td><img src="docs/screenshots/reading-progress.png" width="320" alt="Monthly reading progress and completed compendium parts"></td></tr>
-<tr><th>Author trends</th><th>Collection trends</th></tr>
-<tr><td><img src="docs/screenshots/trends-authors.png" width="320" alt="Author trends"></td><td><img src="docs/screenshots/trends-collections.png" width="320" alt="Collection trends"></td></tr>
+<tr><th>Author trends · Pages · View all</th><th>Collection trends · Reading time</th></tr>
+<tr><td><img src="docs/screenshots/trends-authors.png" width="320" alt="All 114 author trend lines measured in pages"></td><td><img src="docs/screenshots/trends-collections.png" width="320" alt="Collection trends measured in reading time"></td></tr>
 <tr><th>Settings</th><th>About</th></tr>
 <tr><td><img src="docs/screenshots/settings-1.2.png" width="320" alt="Book Tracker 1.2 Settings categories"></td><td><img src="docs/screenshots/about-1.2.png" width="320" alt="Book Tracker 1.2 version and build"></td></tr>
 </table>

@@ -55,7 +55,7 @@ internal fun bookLongestReadingStreak(points: List<DailyActivityPoint>): Int {
 internal fun bookPointsForRange(points: List<DailyActivityPoint>, range: BookStatsRange, today: LocalDate = LocalDate.now()): List<DailyActivityPoint> {
     val start = when (range) {
         BookStatsRange.WEEK -> today.minusDays(6)
-        BookStatsRange.MONTH -> today.minusDays(29)
+        BookStatsRange.MONTH -> today.withDayOfMonth(1)
         BookStatsRange.YEAR -> today.minusDays(364)
         BookStatsRange.ALL_TIME -> points.minByOrNull { it.date }?.date ?: today.minusDays(6)
     }
@@ -75,9 +75,12 @@ internal fun bookChartPoints(points: List<DailyActivityPoint>, range: BookStatsR
             val date = today.minusDays(offset.toLong())
             byDate[date] ?: DailyActivityPoint(date, 0, 0)
         }
-        BookStatsRange.MONTH -> (29 downTo 0).map { offset ->
-            val date = today.minusDays(offset.toLong())
-            byDate[date] ?: DailyActivityPoint(date, 0, 0)
+        BookStatsRange.MONTH -> {
+            val first = today.withDayOfMonth(1)
+            (0 until first.lengthOfMonth()).map { offset ->
+                val date = first.plusDays(offset.toLong())
+                if (date <= today) byDate[date] ?: DailyActivityPoint(date, 0, 0) else DailyActivityPoint(date, 0, 0)
+            }
         }
         BookStatsRange.YEAR -> {
             val firstMonth = today.minusMonths(11).withDayOfMonth(1)
@@ -103,4 +106,25 @@ internal fun bookChartPoints(points: List<DailyActivityPoint>, range: BookStatsR
             }
         }
     }
+}
+
+internal data class BookStatsPeriod(val start: LocalDate, val end: LocalDate)
+
+/** Month means a calendar month. Current-month totals stop today; older months include their final day. */
+internal fun bookStatsPeriod(range: BookStatsRange, offset: Int, today: LocalDate = LocalDate.now(), earliest: LocalDate? = null): BookStatsPeriod {
+    val previous = offset.coerceAtLeast(0).toLong()
+    if (range == BookStatsRange.MONTH) {
+        val first = today.withDayOfMonth(1).minusMonths(previous)
+        return BookStatsPeriod(first, minOf(first.withDayOfMonth(first.lengthOfMonth()), today))
+    }
+    val end = when (range) {
+        BookStatsRange.WEEK -> today.minusWeeks(previous)
+        BookStatsRange.YEAR -> today.minusYears(previous)
+        else -> today
+    }
+    return BookStatsPeriod(when (range) {
+        BookStatsRange.WEEK -> end.minusDays(6)
+        BookStatsRange.YEAR -> end.minusDays(364)
+        else -> minOf(earliest ?: end, end)
+    }, end)
 }

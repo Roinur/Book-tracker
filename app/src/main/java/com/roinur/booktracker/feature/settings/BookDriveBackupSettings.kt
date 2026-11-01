@@ -1,6 +1,7 @@
 package com.roinur.booktracker
 
 import android.accounts.Account
+import androidx.compose.foundation.border
 import android.accounts.AccountManager
 import android.app.Activity
 import android.content.SharedPreferences
@@ -120,14 +121,14 @@ internal fun BookDriveBackupSettings(allowed: Boolean, onRestore: (String) -> Un
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Google Drive", style = MaterialTheme.typography.titleMedium)
+        BookSettingsHeading("Google Drive backup", R.drawable.ic_cloud_backup_24)
         Text("Books, sessions, notes, collections, goals and covers.", style = MaterialTheme.typography.bodySmall)
         if (allowed && account.isNotBlank()) Text(account, style = MaterialTheme.typography.bodyMedium)
         Text(if (allowed) state.status else "Another backup or import is in progress.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (allowed) Text("Last verified upload: ${state.lastSuccess.takeIf { it.isNotBlank() }?.let(::driveLocalDate) ?: "Never"}", style = MaterialTheme.typography.bodySmall)
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)))
-        OutlinedButton(onClick = {
+        OutlinedButton(shape = BookSettingsButtonShape, onClick = {
             busy = true
             try { chooser.launch(AccountManager.newChooseAccountIntent(null, null, arrayOf("com.google"), null, null, null, null)) }
             catch (exception: Exception) { error(exception) }
@@ -148,21 +149,22 @@ internal fun BookDriveBackupSettings(allowed: Boolean, onRestore: (String) -> Un
                 if (state.enabled) DriveBackupSync.enqueue(context)
             })
         }
-        Button(onClick = { perform { _, token -> DriveBackupSync.upload(context, token, account, force = true) } },
+        Button(shape = BookSettingsButtonShape, onClick = { perform { _, token -> DriveBackupSync.upload(context, token, account, force = true) } },
             enabled = allowed && !busy && enabled, modifier = Modifier.fillMaxWidth()) { Text("Back up now") }
-        OutlinedButton(onClick = { perform { transport, _ ->
+        OutlinedButton(shape = BookSettingsButtonShape, onClick = { perform { transport, _ ->
             val discovered = transport.listVerified()
             scope.launch { files = discovered; showBackups = true }
         } }, enabled = allowed && !busy && account.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Restore from Google Drive") }
-        if (account.isNotBlank()) TextButton(onClick = {
+        if (account.isNotBlank()) TextButton(shape = BookSettingsButtonShape, onClick = {
             state.preferences.edit().clear().apply(); DriveBackupSync.syncSchedule(context); files = emptyList()
         }, enabled = allowed && !busy) { Text("Disconnect (keep cloud backups)") }
         Text("Keeps five verified copies in Book Tracker Backups. Files are readable to anyone you give access to in Drive.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 
-    if (confirmWriter && allowed) AlertDialog(shape = RoundedCornerShape(8.dp), onDismissRequest = { confirmWriter = false }, title = { Text("Use this phone as backup source?") },
+    if (confirmWriter && allowed) AlertDialog(shape = RoundedCornerShape(10.dp), containerColor = MaterialTheme.colorScheme.surfaceContainerLow, tonalElevation = 0.dp,
+        modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp)), onDismissRequest = { confirmWriter = false }, title = { Text("Use this phone as backup source?") },
         text = { Text("This uploads this phone's library. If you are recovering a lost phone, restore first. Existing verified versions are retained; connecting alone never overwrites them.") },
-        confirmButton = { TextButton(onClick = {
+        confirmButton = { TextButton(shape = BookSettingsButtonShape, onClick = {
             confirmWriter = false
             perform { transport, _ ->
                 DriveBackupSync.lock.withLock {
@@ -171,12 +173,13 @@ internal fun BookDriveBackupSettings(allowed: Boolean, onRestore: (String) -> Un
                     DriveBackupSync.syncSchedule(context); DriveBackupSync.enqueue(context)
                 }
             }
-        }, enabled = allowed && !busy) { Text("Enable backup") } }, dismissButton = { TextButton(onClick = { confirmWriter = false }) { Text("Cancel") } })
+        }, enabled = allowed && !busy) { Text("Enable backup") } }, dismissButton = { TextButton(shape = BookSettingsButtonShape, onClick = { confirmWriter = false }) { Text("Cancel") } })
 
-    if (showBackups && allowed) AlertDialog(shape = RoundedCornerShape(8.dp), onDismissRequest = { showBackups = false }, title = { Text("Verified cloud backups") },
+    if (showBackups && allowed) AlertDialog(shape = RoundedCornerShape(10.dp), containerColor = MaterialTheme.colorScheme.surfaceContainerLow, tonalElevation = 0.dp,
+        modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp)), onDismissRequest = { showBackups = false }, title = { Text("Verified cloud backups") },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (files.isEmpty()) Text("No verified backup found for this app and Google account.")
-            files.forEach { file -> OutlinedButton(enabled = allowed && !busy, onClick = {
+            files.forEach { file -> OutlinedButton(shape = BookSettingsButtonShape, enabled = allowed && !busy, onClick = {
                 showBackups = false
                 perform { transport, _ ->
                     val text = transport.download(file.id)
@@ -184,5 +187,5 @@ internal fun BookDriveBackupSettings(allowed: Boolean, onRestore: (String) -> Un
                     scope.launch { onRestore(decoded.payload) }
                 }
             }, modifier = Modifier.fillMaxWidth()) { Text(driveLocalDate(file.createdAt)) } }
-        } }, confirmButton = { TextButton(onClick = { showBackups = false }) { Text("Close") } })
+        } }, confirmButton = { TextButton(shape = BookSettingsButtonShape, onClick = { showBackups = false }) { Text("Close") } })
 }

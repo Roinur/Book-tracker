@@ -72,4 +72,50 @@ class BookGoalTest {
         val utc = bookGoalProgress(book(), daily(), listOf(s), today, ZoneId.of("UTC"))
         assertEquals(25L, local.todayPages); assertEquals(0L, utc.todayPages)
     }
+
+    private fun minutes(value: Int = 30) = BookGoal(1, BookGoalMode.DAILY_MINUTES, dailyMinutes = value, createdDate = today)
+
+    @Test fun minuteGoalUsesActualBookTimeIncludingSessionsWithNoPages() {
+        val s = session(1, 0, seconds = 600)
+        val p = bookGoalProgress(book(), minutes(), listOf(s, s, session(2, 10, seconds = 300),
+            session(3, 20, seconds = 3600, bookId = 2), session(4, 30, seconds = 3600, excluded = true),
+            session(5, 20, seconds = 3600, day = "2026-10-01")), today)
+        assertTrue(p.timeBased)
+        assertEquals(900L, p.todayValue); assertEquals(1800L, p.todayTarget)
+        assertEquals(900L, p.todayRemaining); assertEquals(900L, p.todaySeconds)
+        assertEquals(1800L, p.dailySeconds); assertEquals(0.5f, p.todayFraction, 0.001f)
+        assertEquals("15 / 30 min", p.todayProgressLabel)
+        assertEquals("15 min", p.todayRemainingLabel)
+    }
+
+    @Test fun minuteGoalWorksWithoutPaceOrKnownPageCount() {
+        val p = bookGoalProgress(book(page = 0, total = 0), minutes(), listOf(session(1, 0, seconds = 61)), today)
+        assertFalse(p.completed); assertFalse(p.hasFinishEstimate)
+        assertNull(p.remainingSeconds); assertEquals(1739L, p.todayRemaining)
+        assertEquals("29 min", p.todayRemainingLabel)
+    }
+
+    @Test fun minuteGoalProjectsFinishAndHandlesTodayAlreadyExceeded() {
+        val sessions = listOf(session(1, 60, seconds = 3600))
+        val p = bookGoalProgress(book(), minutes(), sessions, today)
+        assertEquals(0L, p.todayRemaining); assertEquals(1f, p.todayFraction, 0.001f)
+        assertEquals(12000L, p.remainingSeconds); assertEquals(8L, p.daysRemaining)
+        assertEquals(today.plusDays(7), p.expectedFinish)
+        assertTrue(p.hasFinishEstimate)
+    }
+
+    @Test fun minuteGoalCapsFinalDayAndFinishedBooksWithoutInventingPages() {
+        val sessions = listOf(session(1, 60, seconds = 3600, day = "2026-10-01"))
+        val p = bookGoalProgress(book(page = 290), minutes(), sessions, today)
+        assertEquals(600L, p.todayTarget); assertEquals(600L, p.todayRemaining); assertEquals(1L, p.daysRemaining)
+        val done = bookGoalProgress(book(page = 180, status = BookStatus.FINISHED), minutes(), sessions, today)
+        assertTrue(done.completed); assertEquals(0L, done.todayRemaining)
+    }
+
+    @Test fun minuteGoalUsesLocalDayBoundary() {
+        val s = session(1, 0, seconds = 900, day = "2026-10-01T22:30:00Z")
+        val local = bookGoalProgress(book(), minutes(), listOf(s), today, ZoneId.of("Europe/Stockholm"))
+        val utc = bookGoalProgress(book(), minutes(), listOf(s), today, ZoneId.of("UTC"))
+        assertEquals(900L, local.todayValue); assertEquals(0L, utc.todayValue)
+    }
 }

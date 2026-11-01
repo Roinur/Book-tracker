@@ -58,6 +58,11 @@ internal fun BookAddScreen(
     var editedCollectionTypeName by rememberSaveable { mutableStateOf("") }
     var showRemoveConfirm by rememberSaveable { mutableStateOf(false) }
     var showPartsEditor by rememberSaveable { mutableStateOf(false) }
+    var showBookListFields by rememberSaveable { mutableStateOf(false) }
+    if (showBookListFields) BookListFieldsDialog(vm.draftOwnership, vm.draftReadingPriority,
+        onDismiss = { showBookListFields = false }, onSave = { ownership, priority ->
+            vm.updateDraftBookList(ownership, priority); showBookListFields = false
+        }, finalRating = vm.statsBooks.firstOrNull { it.id == vm.editingBookId && it.status == BookStatus.FINISHED }?.rating)
     if (showPartsEditor) BookPartsEditor(vm, vm.draftParts, vm.pageCountInput.toIntOrNull() ?: 0,
         onDismiss = { showPartsEditor = false }, onApply = { vm.updateDraftParts(it); showPartsEditor = false })
     Column(
@@ -112,6 +117,10 @@ internal fun BookAddScreen(
             )
             OutlinedButton(onClick = { showPartsEditor = true }, shape = RoundedCornerShape(8.dp), modifier = Modifier.height(56.dp)) {
                 BookButtonLabel(R.drawable.ic_list_24, if (vm.draftParts.isEmpty()) "Parts" else "Parts (${vm.draftParts.size})")
+            }
+            OutlinedButton(onClick = { showBookListFields = true }, shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.size(56.dp), contentPadding = PaddingValues(0.dp)) {
+                Icon(painterResource(R.drawable.ic_collections_24), "Book list: weight", tint = MaterialTheme.colorScheme.primary)
             }
         }
         BookCollectionPicker(

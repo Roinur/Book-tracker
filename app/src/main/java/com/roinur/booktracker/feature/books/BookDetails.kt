@@ -182,7 +182,7 @@ internal fun BookDetailCard(
                         modifier = Modifier.fillMaxWidth().height(44.dp)
                     ) {
                         if (active) {
-                            Text("Resume · p.${book.currentPage} · ${bookFormatDuration(liveSeconds)}")
+                            Text("Resume · p.${book.readingPage} · ${bookFormatDuration(liveSeconds)}")
                         } else {
                             BookButtonLabel(R.drawable.ic_book_24, "Continue reading")
                         }
@@ -397,7 +397,8 @@ internal fun BookInteractiveRating(
     rating: Int,
     onRating: (Int) -> Unit,
     onRatingPreview: (Int) -> Unit,
-    onRatingCancel: () -> Unit
+    onRatingCancel: () -> Unit,
+    allowClear: Boolean = true
 ) {
     var confirmClear by remember { mutableStateOf(false) }
 
@@ -444,7 +445,7 @@ internal fun BookInteractiveRating(
                 textAlign = TextAlign.Center
             )
         }
-        TextButton(onClick = { confirmClear = true }) {
+        if (allowClear) TextButton(onClick = { confirmClear = true }) {
             Text("Clear")
         }
     }

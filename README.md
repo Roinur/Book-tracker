@@ -2,9 +2,13 @@
 
 <img src="app/src/main/res/drawable/app_icon.png" width="96" alt="Book Tracker icon">
 
-An Android reading journal for books, reading sessions, notes and personal goals. Your library is stored locally; no account is required.
+An Android reading journal for books, reading plans, sessions, notes and personal goals. Your library is stored locally; no account is required.
+
+**Version 1.2** adds reading plans, yearly text/image exports, optional Book List and Obsidian integrations, recap cards and completion-rating prompts. [What changed in 1.2](docs/RELEASE_1.2.md).
 
 ## Screenshots
+
+<img src="docs/screenshots/settings-1.2.png" width="320" alt="Book Tracker 1.2 Settings categories"> <img src="docs/screenshots/about-1.2.png" width="320" alt="Book Tracker 1.2 version and build">
 
 <table>
 <tr><th>Stats</th><th>Library</th></tr>
@@ -38,6 +42,9 @@ An Android reading journal for books, reading sessions, notes and personal goals
 - An ongoing Reading goals notification shows daily, monthly and yearly progress. Settings has independent switches for overall reading-goal and individual book-goal notifications.
 - Reading trends compares authors or collections over Today, Week, Month, Year or All time. Choose Pages, Time or Sessions, compare totals or share, and inspect positive ratings or average ratings.
 - Interactive Stats and book graphs: hold and drag to inspect points. Stats keeps the same sizing across periods and fits the available screen area.
+- Hold Week, Month, Year or All time on Stats for a themed reading recap of the selected period, with reading totals, daily records, streaks, covers and completion ratings. Copy, save or share the recap as a PNG image; holding the selected tab preserves its browsed historical dates.
+- Month uses calendar months, including leap-year February and 31-day months. Historical months include the whole month; current-month totals stop today while the chart shows the full month's days.
+- Settings opens a compact category overview with dedicated Appearance, Notifications, Data & backups, Google Drive backup, Book List, Obsidian export and About pages. Purpose-specific icons, compact panels and square 8 dp buttons follow the Book List style. Toolbar and Android Back return from a category to the overview.
 - Per-book deadlines or daily page targets, with today's remaining pages, estimated reading time and finish date. Swipe the Pages read card to set a goal. Active goals have a separate ongoing notification. Time estimates use book pace, then publisher pace, then overall pace.
 - Compendium parts with inclusive page ranges, individual covers and ratings. Inspect each work through segmented progress bars and the reading screen. Reading time is split proportionally when a session crosses parts, and completed works appear separately in statistics until the compendium is finished.
 - Scan contents pages with the camera or import photos to propose part titles and start pages. Recognition runs on the device; review, deselect and edit the proposals before applying them. Multiple photos can be combined.
@@ -47,6 +54,8 @@ An Android reading journal for books, reading sessions, notes and personal goals
 - Page calculator for session logs in compendiums and editions with different page numbering.
 - Verified JSON backups with embedded covers, collection types and book goals. Check a backup before restoring, export local recovery copies and inspect preserved original import data.
 - Optional Google Drive backup, manual or automatic, with Wi-Fi-only scheduling and five verified versions. Download a version into the import preview before restoring to an empty library. See [Drive setup](docs/GOOGLE_DRIVE_BACKUP_SETUP.md).
+- Optional automatic [Obsidian Markdown export](docs/OBSIDIAN_MARKDOWN_EXPORT.md) to an existing Drive vault folder. Stable book files, a durable background queue and conditional updates preserve personal notes outside the app's marked block. This is separate from backups and does not import Obsidian edits.
+- Optional personal [Book List](docs/BOOK_LIST_SYNC.md) in a newly created Google spreadsheet. Sync library fields both ways, edit ownership and reading priority, review conflicts, and keep undated reading totals separate from heatmap activity. Existing spreadsheets are untouched.
 
 ## Install and update
 
@@ -54,17 +63,17 @@ Download the signed APK from [GitHub Releases](https://github.com/Roinur/Book-Tr
 
 Install an update over the existing app. **Do not uninstall or clear storage to update.** Android requires the same application ID and signing key. Export a backup in Settings and keep a copy outside the phone.
 
-The application ID is `com.roinur.booktracker`.
+The application ID is `com.roinur.booktracker`. Current release: **1.2, Android build 121**.
 
-Release history: [1.0](https://github.com/Roinur/Book-tracker/releases/tag/v1.0) preserves the original first release (Android build 33). [1.1](https://github.com/Roinur/Book-tracker/releases/tag/v1.1) covers build 88, including Reading map, collection editing and progress, book goals, compendium parts, contents scanning, Drive backup and gallery improvements. See the [changelog](CHANGELOG.md).
+Release history: [1.0](https://github.com/Roinur/Book-tracker/releases/tag/v1.0) preserves the original first release (Android build 33). [1.1](https://github.com/Roinur/Book-tracker/releases/tag/v1.1) covers build 88, including Reading map, collection editing and progress, book goals, compendium parts, contents scanning, Drive backup and gallery improvements. [1.2](https://github.com/Roinur/Book-tracker/releases/tag/v1.2) covers build 121 and the [new features since 1.1](docs/RELEASE_1.2.md). See the [changelog](CHANGELOG.md).
 
 ## Build
 
 Requirements: JDK 17, Android SDK platform 34 and Build Tools 34.0.0. Open this directory in Android Studio and let Gradle resolve dependencies, or configure `ANDROID_HOME` / an ignored `local.properties` file.
 
 ```powershell
-git clone https://github.com/Roinur/Book-Tracker.git
-cd Book-Tracker
+git clone https://github.com/Roinur/Book-tracker.git
+cd Book-tracker
 .\gradlew.bat :app:assembleDebug
 .\gradlew.bat :app:testReleaseUnitTest
 ```
@@ -88,7 +97,7 @@ The first build needs internet access. No private export, signing key or local S
 
 ## Data and privacy
 
-Library records, notes and active-session state are local. Optional Drive backup uploads complete snapshots to your Google account after you enable it; files are not end-to-end encrypted by Book Tracker. Android system backup may also copy app data depending on device settings. Metadata and cover searches send search terms to Open Library, Google Books or Libris. Optional Google Images search opens Google's website inside the app. ML Kit processes ISBN barcodes and contents-page photos on the device; its SDK may send operational metrics to Google. See [privacy](PRIVACY.md).
+Library records, notes and active-session state are local. Optional Drive backup uploads complete snapshots after you enable it. Book List optionally syncs library overview fields with a new Google Sheet, and Obsidian export separately sends Markdown notes to a chosen Drive folder. These files are not end-to-end encrypted by Book Tracker. Android system backup may also copy app data depending on device settings. Metadata and cover searches send search terms to Open Library, Google Books or Libris. Optional Google Images search opens Google's website inside the app. ML Kit processes ISBN barcodes and contents-page photos on the device; its SDK may send operational metrics to Google. See [privacy](PRIVACY.md).
 
 See [data compatibility](DATA_COMPATIBILITY.md) before changing storage or import code and [architecture](ARCHITECTURE.md) for the source layout.
 

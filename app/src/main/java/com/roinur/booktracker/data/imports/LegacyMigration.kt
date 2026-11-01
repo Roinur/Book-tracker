@@ -80,7 +80,7 @@ internal object LegacyMigration {
         val format = root.optString("format")
         require(format in setOf(BACKUP_FORMAT_V1, BACKUP_FORMAT_V2, BACKUP_FORMAT)) { "Unsupported backup format." }
         val allowed = mutableSetOf("format", "exported_at", "books", "reading_sessions", "reading_notes", "bookly_sources", "bookly_links")
-        if (format == BACKUP_FORMAT) allowed += setOf("reading_goals", "collection_types", "book_goals", "content_sha256", "integrity_sha256", "cover_assets")
+        if (format == BACKUP_FORMAT) allowed += setOf("reading_goals", "collection_types", "book_goals", "content_sha256", "integrity_sha256", "cover_assets", "reading_plans", "reading_plan_books")
         require(root.keys().asSequence().all { it in allowed }) { "Unknown backup sections; restore cancelled rather than discard data." }
         listOf("books", "reading_sessions", "reading_notes").forEach { name ->
             val array = root.getJSONArray(name)
@@ -128,6 +128,8 @@ internal object LegacyMigration {
         if (root.has("book_goals")) content.put("book_goals", root.getJSONArray("book_goals"))
         if (root.has("collection_types")) content.put("collection_types", root.getJSONArray("collection_types"))
         if (root.has("cover_assets")) content.put("cover_assets", root.getJSONArray("cover_assets"))
+        if (root.has("reading_plans")) content.put("reading_plans", root.getJSONArray("reading_plans"))
+        if (root.has("reading_plan_books")) content.put("reading_plan_books", root.getJSONArray("reading_plan_books"))
         return hash(canonicalJson(content).toByteArray(Charsets.UTF_8))
     }
 
@@ -383,21 +385,22 @@ internal object LegacyMigration {
             "Duplicate collection types; nothing imported."
         }
         val tableColumns = linkedMapOf(
-            "books" to setOf("id","isbn","title","authors","page_count","current_page","status","rating","notes","cover_url","source_url","collections","pinned","added_at","started_at","finished_at","finished_at_manual","last_read_at","reading_seconds","parts_json"),
-            "reading_sessions" to setOf("id","book_id","started_at","ended_at","duration_seconds","duration_milliseconds","pages_read","page_reached","exclude_from_statistics"),
+            "books" to setOf("id","isbn","title","authors","page_count","current_page","status","rating","notes","cover_url","source_url","collections","pinned","added_at","started_at","finished_at","finished_at_manual","last_read_at","reading_seconds","parts_json","bookmark_page","list_sync_key","ownership","reading_priority","unlogged_pages","unlogged_seconds"),
+            "reading_sessions" to setOf("id","book_id","started_at","ended_at","duration_seconds","duration_milliseconds","pages_read","page_reached","exclude_from_statistics","bookmark_page"),
             "reading_notes" to setOf("id","book_id","created_at","page","duration_seconds","kind","note","autosave_key")
         )
         if (root.has("reading_goals")) {
             tableColumns["reading_goals"] = setOf("id", "daily_minutes", "daily_pages", "yearly_books", "updated_at", "monthly_minutes", "monthly_pages", "daily_metric", "monthly_metric")
         }
         if (root.has("book_goals")) {
-            tableColumns["book_goals"] = setOf("id", "book_id", "mode", "daily_pages", "target_date", "created_date")
+            tableColumns["book_goals"] = setOf("id", "book_id", "mode", "daily_pages", "daily_minutes", "target_date", "created_date")
         }
         val prepared = tableColumns.mapValues { (table, columns) ->
             val entries = root.getJSONArray(table)
             val records = (0 until entries.length()).map { entries.getJSONObject(it) }
             records.forEach { record ->
                 require(record.keys().asSequence().all { it in columns }) { "Unknown $table backup fields. File retained; import cancelled rather than discard data." }
+                if (record.has("bookmark_page") && !record.isNull("bookmark_page")) require(record.getLong("bookmark_page") in 0..Int.MAX_VALUE.toLong()) { "Invalid bookmark page; nothing imported." }
                 require(record.getLong("id") > 0) { "Invalid backup row ID." }
             }
             require(records.map { it.getLong("id") }.distinct().size == records.size) { "Duplicate $table backup IDs." }
@@ -428,9 +431,10 @@ internal object LegacyMigration {
                         }
                     }
                     if (table == "book_goals") {
-                        require(row.getString("mode") in setOf("DEADLINE", "DAILY_PAGES")) { "Unknown book goal mode" }
+                        require(row.getString("mode") in setOf("DEADLINE", "DAILY_PAGES", "DAILY_MINUTES")) { "Unknown book goal mode" }
                         java.time.LocalDate.parse(row.getString("created_date"))
                         if (row.getString("mode") == "DEADLINE") java.time.LocalDate.parse(row.getString("target_date"))
+                        else if (row.getString("mode") == "DAILY_MINUTES") require(row.getInt("daily_minutes") > 0) { "Invalid daily goal" }
                         else require(row.getInt("daily_pages") > 0) { "Invalid daily goal" }
                     }
                     if (table == "reading_sessions" || table == "reading_notes" || table == "book_goals") {
@@ -457,6 +461,7 @@ internal object LegacyMigration {
                     put("kind", row.getString("kind"))
                 })
             }
+            restoreReadingPlans(db, root, maps["books"].orEmpty())
             val newlyArchived = mutableSetOf<String>()
             sourcePlans.forEach { (plan, importedAt) ->
                 if (!exists(db, plan.hash)) {

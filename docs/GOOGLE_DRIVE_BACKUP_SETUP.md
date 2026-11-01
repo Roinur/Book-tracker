@@ -1,6 +1,6 @@
 # Google Drive backup
 
-In Settings, connect Google Drive and enable automatic backup. Book Tracker keeps
+Open **Settings → Google Drive backup**, connect Google Drive and enable automatic backup. Book Tracker keeps
 five verified versions in its own **Book Tracker Backups** folder. Connecting an
 account alone does not upload anything. On a replacement phone, restore a backup
 before enabling uploads. Restore uses the existing import preview and only runs

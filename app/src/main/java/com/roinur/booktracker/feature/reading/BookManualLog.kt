@@ -56,17 +56,20 @@ internal fun BookManualLogDialog(
     initialKind: BookNoteKind,
     onDismiss: () -> Unit,
     onSaveNote: (BookNoteKind, String, String, String, String) -> Unit,
-    onSaveSession: (String, String, String) -> Unit
+    onSaveSession: (String, String, String, String?) -> Unit
 ) {
     val pickerColors = MaterialTheme.colorScheme
     val context = LocalContext.current
     var mode by rememberSaveable(initialMode) { mutableStateOf(initialMode) }
     var kindName by rememberSaveable(initialKind.name) { mutableStateOf(initialKind.name) }
     var dateDraft by rememberSaveable { mutableStateOf(bookNowEditableDate()) }
-    var notePageDraft by rememberSaveable(book.id) { mutableStateOf(book.currentPage.takeIf { it > 0 }?.toString().orEmpty()) }
-    var noteDraft by rememberAutoSavedBookNote("manual_${book.id}", book.id, { dateDraft }, { notePageDraft.toIntOrNull() ?: book.currentPage }, { runCatching { BookNoteKind.valueOf(kindName) }.getOrDefault(initialKind) })
+    var notePageDraft by rememberSaveable(book.id) { mutableStateOf(book.readingPage.takeIf { it > 0 }?.toString().orEmpty()) }
+    var noteDraft by rememberAutoSavedBookNote("manual_${book.id}", book.id, { dateDraft }, { notePageDraft.toIntOrNull() ?: book.readingPage }, { runCatching { BookNoteKind.valueOf(kindName) }.getOrDefault(initialKind) })
     var sessionMinutesDraft by rememberSaveable { mutableStateOf("10") }
-    var pageReachedDraft by rememberSaveable(book.id) { mutableStateOf(book.currentPage.takeIf { it > 0 }?.toString().orEmpty()) }
+    var pageReachedDraft by rememberSaveable(book.id) { mutableStateOf("0") }
+    var bookmarkEnabled by rememberSaveable(book.id) { mutableStateOf(book.bookmarkPage != null) }
+    var bookmarkOverride by rememberSaveable(book.id) { mutableStateOf<String?>(null) }
+    val bookmarkText = bookmarkOverride ?: (book.readingPage.toLong() + (pageReachedDraft.toIntOrNull() ?: 0)).coerceAtMost(Int.MAX_VALUE.toLong()).toString()
     val kind = runCatching { BookNoteKind.valueOf(kindName) }.getOrDefault(BookNoteKind.NOTE)
     var durationPickerOpen by remember { mutableStateOf(false) }
     fun showDateTimePicker() {
@@ -143,13 +146,15 @@ internal fun BookManualLogDialog(
                 OutlinedTextField(
                     value = pageReachedDraft,
                     onValueChange = { pageReachedDraft = it.filter(Char::isDigit).take(6) },
-                    label = { Text("Page reached") },
+                    label = { Text("Pages read") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
+                BookBookmarkField(bookmarkEnabled, bookmarkText, { bookmarkEnabled = it }, { bookmarkOverride = it })
                 Button(
-                    onClick = { onSaveSession(dateDraft, sessionMinutesDraft, pageReachedDraft) },
+                    onClick = { onSaveSession(dateDraft, sessionMinutesDraft, pageReachedDraft, if (bookmarkEnabled) bookmarkText else null) },
+                    enabled = bookReadingEntry(book, pageReachedDraft, if (bookmarkEnabled) bookmarkText else null) != null,
                     modifier = Modifier.fillMaxWidth().height(50.dp)
                 ) {
                     Text("Save session")

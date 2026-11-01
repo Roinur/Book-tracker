@@ -1,6 +1,6 @@
 # Data compatibility
 
-The application ID, signing identity, database name, preference keys and native backup format are retained in version 1.1. An alias preserves the previous launcher component name for existing shortcuts.
+The application ID, signing identity, database name, preference keys and native backup format are retained in version 1.2. An alias preserves the previous launcher component name for existing shortcuts.
 
 The import code uses generic Legacy/Archive names. Existing serialized `bookly_sources` and `bookly_links` keys/table names intentionally remain: changing them for cosmetic reasons would invalidate older backups or orphan preserved data.
 
@@ -13,3 +13,5 @@ Instrumentation tests create and delete only randomly named test databases. Neve
 Version 1.1 adds collection types and per-book goals as separate tables. Book goals reference book IDs and follow their books through backup restoration; deleting a book also removes its goal. These optional sections are covered by V3 backup checksums. Version 1.1 can read older V3 backups without these sections. Older app versions may reject newer backups rather than discard unknown data.
 
 Book-goal notifications are separate from the active reading timer. Saving or removing a goal does not pause, resume or discard a reading session.
+
+Version 1.2 adds optional reading plans, per-book minute goals, printed bookmarks on books/sessions, Book List fields and a backup-preserved book UUID used by integrations. Restoring plans remaps their book references. Native V3 snapshots retain these sections and integrity checks; older snapshots without them are accepted. Older app builds may reject newer snapshots rather than discard unfamiliar data. Account grants, folder selection, export reservations and sync baselines remain installation-specific. The completion-rating prompt uses the existing rating field; it does not invent reading pages or alter already saved ratings.

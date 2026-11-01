@@ -11,9 +11,13 @@ import android.widget.Toast
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -25,9 +29,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -166,7 +174,7 @@ internal fun BookSessionsDialog(
                             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Text(bookFormatSessionDate(session), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                                 if (session.excludeFromStatistics) Text("Excluded from date statistics", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                                Text("${bookFormatSessionDuration(session)} - ${session.pagesRead} pages - reached ${session.pageReached}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("${bookFormatSessionDuration(session)} - ${session.pagesRead} pages - reached ${session.bookmarkPage ?: session.pageReached}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Text("Edit", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                         }
@@ -354,12 +362,44 @@ internal fun BookGlobalNotesDialog(
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 internal fun BookGlobalSessionsDialog(
     title: String = "Reading sessions",
     sessions: List<BookReadingSessionWithBook>,
     onDismiss: () -> Unit,
-    onEdit: (BookReadingSessionRow) -> Unit
+    onEdit: (BookReadingSessionRow) -> Unit,
+    onCopyReadingList: ((BookReadingListOptions, BookReadingListFormat) -> Unit)? = null,
+    readingListCollections: List<String> = emptyList()
 ) {
+    val context = LocalContext.current
+    val exportPrefs = remember(context) { context.getSharedPreferences("book_reading_list_export", Context.MODE_PRIVATE) }
+    var exportOptions by remember {
+        mutableStateOf(BookReadingListOptions(
+            excludedCollections = exportPrefs.getStringSet("excluded_collections", emptySet()).orEmpty().toSet(),
+            finishedOnly = exportPrefs.getBoolean("finished_only", false),
+            includeParts = exportPrefs.getBoolean("include_parts", true),
+            includeAuthors = exportPrefs.getBoolean("include_authors", false),
+            allBooks = exportPrefs.getBoolean("all_books", false),
+            includeCompletionDates = exportPrefs.getBoolean("completion_dates", false)
+        ))
+    }
+    var choosingCollections by rememberSaveable { mutableStateOf(false) }
+    var choosingFormat by rememberSaveable { mutableStateOf(false) }
+    val collectionNames = remember(readingListCollections) {
+        readingListCollections.filter { it.isNotBlank() }.distinctBy { it.lowercase(Locale.ROOT) }
+    }
+    fun setOptions(options: BookReadingListOptions) {
+        exportOptions = options
+        exportPrefs.edit().putStringSet("excluded_collections", options.excludedCollections)
+            .putBoolean("finished_only", options.finishedOnly)
+            .putBoolean("include_parts", options.includeParts)
+            .putBoolean("include_authors", options.includeAuthors)
+            .putBoolean("all_books", options.allBooks)
+            .putBoolean("completion_dates", options.includeCompletionDates).apply()
+    }
+    if (choosingFormat && onCopyReadingList != null) BookReadingListFormatDialog(
+        onDismiss = { choosingFormat = false },
+        onChoose = { format -> choosingFormat = false; onCopyReadingList(exportOptions, format) })
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
             modifier = Modifier
@@ -376,29 +416,86 @@ internal fun BookGlobalSessionsDialog(
                 Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                 TextButton(onClick = onDismiss) { Text("Close") }
             }
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                if (sessions.isEmpty()) {
-                    item { Text("No reading sessions yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                } else {
-                    items(sessions, key = { it.session.id }) { row ->
-                        val session = row.session
-                        val rowShape = RoundedCornerShape(8.dp)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(rowShape)
-                                .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                                .fittedClickable(rowShape) { onEdit(session) }
-                                .padding(10.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text(row.bookTitle.ifBlank { "Unknown book" }, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                if (session.excludeFromStatistics) Text("Excluded from date statistics", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                                Text("${bookFormatSessionDate(session)} - ${bookFormatSessionDuration(session)} - ${session.pagesRead} pages - reached ${session.pageReached}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (onCopyReadingList != null) {
+                val shape = RoundedCornerShape(8.dp)
+                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                    .border(1.dp, MaterialTheme.colorScheme.outline, shape)
+                    .fittedCombinedClickable(shape,
+                        onClick = { choosingFormat = true },
+                        onLongClick = { choosingCollections = !choosingCollections })
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                    CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.primary) {
+                        ProvideTextStyle(MaterialTheme.typography.labelLarge) {
+                            BookButtonLabel(R.drawable.ic_copy_24, "Export reading list")
+                        }
+                    }
+                }
+            }
+            if (choosingCollections && onCopyReadingList != null) {
+                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = exportOptions.allBooks,
+                        onClick = { setOptions(exportOptions.copy(allBooks = !exportOptions.allBooks, finishedOnly = false)) },
+                        label = { Text("All library books") })
+                    FilterChip(selected = exportOptions.finishedOnly,
+                        onClick = { setOptions(exportOptions.copy(finishedOnly = !exportOptions.finishedOnly, allBooks = false)) },
+                        label = { Text("Finished only") })
+                    FilterChip(selected = exportOptions.includeParts,
+                        onClick = { setOptions(exportOptions.copy(includeParts = !exportOptions.includeParts)) },
+                        label = { Text("Include parts") })
+                    FilterChip(selected = exportOptions.includeAuthors,
+                        onClick = { setOptions(exportOptions.copy(includeAuthors = !exportOptions.includeAuthors)) },
+                        label = { Text("Authors") })
+                    FilterChip(selected = exportOptions.includeCompletionDates,
+                        onClick = { setOptions(exportOptions.copy(includeCompletionDates = !exportOptions.includeCompletionDates)) },
+                        label = { Text("Completion dates") })
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text("Collections", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { setOptions(exportOptions.copy(excludedCollections = emptySet())) }) { Text("Select all") }
+                        TextButton(onClick = { choosingCollections = false }) { Text("Done") }
+                    }
+                }
+                Text("Uncheck a collection to exclude its books.", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FlowRow(Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    collectionNames.forEach { name ->
+                        val id = name.lowercase(Locale.ROOT)
+                        FilterChip(selected = id !in exportOptions.excludedCollections,
+                            onClick = { setOptions(exportOptions.copy(excludedCollections =
+                                if (id in exportOptions.excludedCollections) exportOptions.excludedCollections - id
+                                else exportOptions.excludedCollections + id)) },
+                            label = { Text(name) })
+                    }
+                }
+            } else {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    if (sessions.isEmpty()) {
+                        item { Text("No reading sessions yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    } else {
+                        items(sessions, key = { it.session.id }) { row ->
+                            val session = row.session
+                            val rowShape = RoundedCornerShape(8.dp)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(rowShape)
+                                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                                    .fittedClickable(rowShape) { onEdit(session) }
+                                    .padding(10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Text(row.bookTitle.ifBlank { "Unknown book" }, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    if (session.excludeFromStatistics) Text("Excluded from date statistics", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                    Text("${bookFormatSessionDate(session)} - ${bookFormatSessionDuration(session)} - ${session.pagesRead} pages - reached ${session.pageReached}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Text("Edit", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                             }
-                            Text("Edit", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }

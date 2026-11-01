@@ -86,6 +86,7 @@ internal fun BookStatsContent(
     var metricName by rememberSaveable { mutableStateOf(BookGraphMetric.TIME.name) }
     var showReadingProgress by rememberSaveable { mutableStateOf(false) }
     var showReadingGoals by rememberSaveable { mutableStateOf(false) }
+    var showPeriodRecap by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(openReadingGoals) {
         if (openReadingGoals) {
             showReadingGoals = true
@@ -99,22 +100,13 @@ internal fun BookStatsContent(
     val longestStreak = remember(stats.dailyPageActivity) { bookLongestReadingStreak(stats.dailyPageActivity) }
     val sourcePoints = if (selectedMetric == BookGraphMetric.TIME) stats.dailyActivity else stats.dailyPageActivity
     var periodOffset by rememberSaveable { mutableStateOf(0) }
-    val periodEnd = when (selectedRange) {
-        BookStatsRange.WEEK -> LocalDate.now().minusWeeks(periodOffset.toLong())
-        BookStatsRange.MONTH -> LocalDate.now().minusMonths(periodOffset.toLong())
-        BookStatsRange.YEAR -> LocalDate.now().minusYears(periodOffset.toLong())
-        BookStatsRange.ALL_TIME -> LocalDate.now()
-    }
-    val periodStart = when (selectedRange) {
-        BookStatsRange.WEEK -> periodEnd.minusDays(6)
-        BookStatsRange.MONTH -> periodEnd.minusDays(29)
-        BookStatsRange.YEAR -> periodEnd.minusDays(364)
-        BookStatsRange.ALL_TIME -> stats.dailyActivity.minOfOrNull { it.date } ?: periodEnd
-    }
+    val period = bookStatsPeriod(selectedRange, periodOffset, LocalDate.now(), stats.dailyActivity.minOfOrNull { it.date })
+    val periodStart = period.start
+    val periodEnd = period.end
     var breakdownMetric by remember { mutableStateOf<BookGraphMetric?>(null) }
     var breakdownAllTime by remember { mutableStateOf(false) }
     var selectedHeatmapDate by remember(selectedRange, periodOffset) { mutableStateOf<LocalDate?>(null) }
-    val selectedHeatmapPoint = sourcePoints.firstOrNull { it.date == selectedHeatmapDate }
+    val selectedHeatmapPoint = sourcePoints.firstOrNull { it.date == selectedHeatmapDate && it.date <= periodEnd }
     val rangePoints = remember(sourcePoints, selectedRange, periodEnd) {
         bookPointsForRange(sourcePoints, selectedRange, periodEnd)
     }
@@ -219,49 +211,26 @@ internal fun BookStatsContent(
         }
         Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Row(Modifier.fillMaxWidth().height(44.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(if (periodOffset == 0 || selectedRange == BookStatsRange.ALL_TIME) when (selectedRange) {
+                Text(if (selectedRange == BookStatsRange.MONTH) periodEnd.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.US))
+                else if (periodOffset == 0 || selectedRange == BookStatsRange.ALL_TIME) when (selectedRange) {
                     BookStatsRange.WEEK -> "This week"
                     BookStatsRange.MONTH -> "This month"
                     BookStatsRange.YEAR -> "This year"
                     BookStatsRange.ALL_TIME -> "All time"
                 } else "${periodStart.format(DateTimeFormatter.ofPattern("MMM d", Locale.US))} – ${periodEnd.format(DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US))}",
-                    modifier = Modifier.weight(1f), style = if (periodOffset == 0) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleMedium, maxLines = 1)
+                    modifier = Modifier.weight(1f), style = if (periodOffset == 0 || selectedRange == BookStatsRange.MONTH) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleMedium, maxLines = 1)
                 if (selectedRange != BookStatsRange.ALL_TIME) {
                     IconButton(onClick = { periodOffset++ }) { Icon(painterResource(R.drawable.ic_chevron_right_24), "Previous period", Modifier.size(22.dp).graphicsLayer(rotationZ = 180f)) }
                     IconButton(onClick = { periodOffset-- }, enabled = periodOffset > 0) { Icon(painterResource(R.drawable.ic_chevron_right_24), "Next period", Modifier.size(22.dp)) }
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                BookStatsRange.entries.forEach { range ->
-                    val selected = selectedRange == range
-                    val shape = RoundedCornerShape(9.dp)
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(40.dp)
-                            .clip(shape)
-                            .background(
-                                if (selected) MaterialTheme.colorScheme.primaryContainer
-                                else MaterialTheme.colorScheme.surface
-                            )
-                            .border(
-                                1.dp,
-                                if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                                shape
-                            )
-                            .fittedClickable(shape) { rangeName = range.name; periodOffset = 0 }
-                    ) {
-                        Text(
-                            range.label,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1
-                        )
-                    }
-                }
-            }
+            BookStatsPeriodSelector(selectedRange,
+                onSelect = { rangeName = it.name; periodOffset = 0 },
+                onRecap = { range ->
+                    // Long-pressing the selected tab keeps the historical period the user browsed to.
+                    if (range != selectedRange) { rangeName = range.name; periodOffset = 0 }
+                    showPeriodRecap = true
+                })
             BookLineChart(
                 title = when {
                     selectedMetric == BookGraphMetric.PAGES && selectedRange == BookStatsRange.YEAR -> "Pages per month"
@@ -339,7 +308,7 @@ internal fun BookStatsContent(
                     BookStatsRange.YEAR -> StatsRange.YEAR
                     BookStatsRange.ALL_TIME -> StatsRange.ALL_TIME
                 },
-                points = if (selectedMetric == BookGraphMetric.PAGES) stats.dailyPageActivity else stats.dailyActivity,
+                points = rangePoints,
                 valueUnit = if (selectedMetric == BookGraphMetric.PAGES) "pages" else "minutes",
                 onDaySelected = { point ->
                     if (selectedHeatmapDate == point.date) onOpenDaySessions(point.date)
@@ -347,7 +316,7 @@ internal fun BookStatsContent(
                 },
                 compact = true,
                 startOverride = periodStart,
-                endOverride = periodEnd,
+                endOverride = if (selectedRange == BookStatsRange.MONTH) periodEnd.withDayOfMonth(periodEnd.lengthOfMonth()) else periodEnd,
                 showSelectionLabel = false,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -364,6 +333,12 @@ internal fun BookStatsContent(
             }
             OutlinedButton(onClick = onOpenTrends, modifier = Modifier.fillMaxWidth().requiredHeight(46.dp)) { Text("Reading trends") }
         }
+    }
+    if (showPeriodRecap) {
+        val recap = remember(statsBooks, sessions, stats, selectedRange, periodStart, periodEnd) {
+            buildBookPeriodRecap(statsBooks, sessions.map { it.session }, stats, selectedRange, periodStart, periodEnd)
+        }
+        BookPeriodRecapDialog(recap) { showPeriodRecap = false }
     }
     breakdownMetric?.let { metric ->
         // Resolve from the full history before filtering, so February starts at its actual accumulated page.
@@ -402,7 +377,7 @@ internal fun BookStatsContent(
     }
     if (showReadingProgress) {
         BookReadingProgressDialog(
-            period = when (selectedRange) { BookStatsRange.WEEK -> "This week"; BookStatsRange.MONTH -> "This month"; BookStatsRange.YEAR -> "This year"; BookStatsRange.ALL_TIME -> "All time" },
+            period = when (selectedRange) { BookStatsRange.WEEK -> "This week"; BookStatsRange.MONTH -> periodEnd.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.US)); BookStatsRange.YEAR -> "This year"; BookStatsRange.ALL_TIME -> "All time" },
             pagesRead = progressPages,
             totalMinutes = progressMinutes,
             pagesPerHour = pagesPerHour,

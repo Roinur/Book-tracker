@@ -158,6 +158,11 @@ internal fun BookLibraryCollections(vm: BookTrackerViewModel, onOpenProgress: ()
                         Modifier.size(18.dp), tint = colors.primary) })
                 if (vm.collectionUndo != null) undoChip()
                 vm.collectionSuggestions.forEach { name -> collectionChip(name) }
+                FilterChip(selected = false, onClick = vm::openLibraryCheck,
+                    enabled = !vm.collectionEditing && !vm.collectionBusy,
+                    label = { Text("Library check") },
+                    leadingIcon = { Icon(painterResource(R.drawable.ic_search_24), null,
+                        Modifier.size(18.dp), tint = colors.primary) })
             }
         }
         if (vm.collectionError.isNotBlank()) Text(vm.collectionError, color = colors.error,

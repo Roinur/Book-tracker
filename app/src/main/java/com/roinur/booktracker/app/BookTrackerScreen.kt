@@ -71,6 +71,7 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
+    if (vm.libraryCheckOpen) BookLibraryCheckDialog(vm, vm::closeLibraryCheck)
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
@@ -91,6 +92,8 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
     var libraryFromCollectionProgress by rememberSaveable { mutableStateOf(false) }
     val collectionProgressState = rememberSaveableStateHolder()
     var showSettings by rememberSaveable { mutableStateOf(false) }
+    var settingsPageName by rememberSaveable { mutableStateOf(BookSettingsPage.ROOT.name) }
+    val settingsPage = runCatching { BookSettingsPage.valueOf(settingsPageName) }.getOrDefault(BookSettingsPage.ROOT)
     var scannerOpen by rememberSaveable { mutableStateOf(false) }
     var showFinishDialog by rememberSaveable { mutableStateOf(false) }
     var finishPageDraft by rememberSaveable { mutableStateOf("") }
@@ -101,6 +104,7 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
     var showNotesDialog by rememberSaveable { mutableStateOf(false) }
     var showSessionsDialog by rememberSaveable { mutableStateOf(false) }
     var showGlobalSessionsDialog by rememberSaveable { mutableStateOf(false) }
+    var readingListImageOptions by remember { mutableStateOf<BookReadingListOptions?>(null) }
     var sessionsDay by remember { mutableStateOf<LocalDate?>(null) }
     var globalNotesFilterKindName by rememberSaveable { mutableStateOf<String?>(null) }
     var editingSessionId by rememberSaveable { mutableStateOf<Int?>(null) }
@@ -119,7 +123,7 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
     val coverSearchTarget = coverSearchTargetName?.let { runCatching { BookCoverTarget.valueOf(it) }.getOrNull() }
     val activeBook = vm.statsBooks.firstOrNull { it.id == vm.activeBookId }
     val visibleLibraryBooks by remember(vm) { androidx.compose.runtime.derivedStateOf {
-        vm.books.filter { vm.libraryFilter.matches(it, vm.activeBookId) && vm.matchesCollectionFilter(it) }
+        vm.visiblePlanBooks()
     } }
     val libraryColumns = if (vm.galleryMode) vm.galleryColumns.coerceIn(1, 5) else 1
     val libraryRows = remember(visibleLibraryBooks, libraryColumns) { visibleLibraryBooks.chunked(libraryColumns) }
@@ -288,7 +292,12 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
             showGlobalSessionsDialog -> showGlobalSessionsDialog = false
             manualLogInitialMode != null -> manualLogInitialMode = null
             showBookGraphDialog -> showBookGraphDialog = false
-            showSettings -> showSettings = false
+            showSettings -> {
+                if (settingsPage != BookSettingsPage.ROOT) {
+                    settingsPageName = BookSettingsPage.ROOT.name
+                    scope.launch { listState.scrollToItem(0) }
+                } else showSettings = false
+            }
             showCoverSearch -> showCoverSearch = false
             coverTargetName != null -> coverTargetName = null
             editingNoteId != null -> editingNoteId = null
@@ -314,7 +323,7 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
         }
     }
 
-    val pageAnimationKey = "${showSettings}_${screenMode.name}_${vm.selectedBookId ?: 0}"
+    val pageAnimationKey = "${showSettings}_${if (showSettings) settingsPage.name else ""}_${screenMode.name}_${vm.selectedBookId ?: 0}"
     var pageVisible by remember(pageAnimationKey) { mutableStateOf(false) }
     LaunchedEffect(pageAnimationKey) { pageVisible = true }
     val pageAlpha = animateFloatAsState(
@@ -332,7 +341,7 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
         key(vm.themeMode, vm.accentMode, MaterialTheme.colorScheme.background) {
             BookTopBar(
                 title = when {
-                    showSettings -> "Settings"
+                    showSettings -> settingsPage.title
                     screenMode == BookScreenMode.ADD -> if (vm.editingBookId != null) "Edit book" else "Add book"
                     screenMode == BookScreenMode.DETAIL -> "Book details"
                     screenMode == BookScreenMode.READING -> "Reading"
@@ -345,7 +354,12 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                 themeMode = vm.themeMode,
                 accentMode = vm.accentMode,
                 settingsActive = showSettings,
-                onBack = if (!showSettings && (screenMode != BookScreenMode.MAIN || canReturnCollectionProgress)) {
+                onBack = if (showSettings && settingsPage != BookSettingsPage.ROOT) {
+                    {
+                        settingsPageName = BookSettingsPage.ROOT.name
+                        scope.launch { listState.scrollToItem(0) }
+                    }
+                } else if (!showSettings && (screenMode != BookScreenMode.MAIN || canReturnCollectionProgress)) {
                     {
                         when (screenMode) {
                             BookScreenMode.MAIN -> returnToCollectionProgress()
@@ -366,6 +380,7 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                 onAccentModeSelected = vm::chooseAccentMode,
                 onSettings = {
                     showSettings = !showSettings
+                    settingsPageName = BookSettingsPage.ROOT.name
                     if (showSettings) screenModeName = BookScreenMode.MAIN.name
                     scope.launch { listState.scrollToItem(0) }
                 }
@@ -419,6 +434,11 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                     item(contentType = "book_settings") {
                         BookSettingsContent(
                             vm = vm,
+                            page = settingsPage,
+                            onNavigate = { page ->
+                                settingsPageName = page.name
+                                scope.launch { listState.scrollToItem(0) }
+                            },
                             onRequestNotificationPermission = ::requestReadingNotificationPermissionIfNeeded,
                             onImport = { bookImportLauncher.launch(arrayOf("application/json", "text/plain", "text/*")) },
                             onExport = { bookExportLauncher.launch("book_tracker_backup_${LocalDate.now(ZoneId.systemDefault())}.json") },
@@ -532,7 +552,7 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                                 nowMs = nowMs,
                                 modifier = Modifier.fillMaxWidth(),
                                 onStop = {
-                                    finishPageDraft = selectedBook.currentPage.takeIf { it > 0 }?.toString().orEmpty()
+                                    finishPageDraft = selectedBook.readingPage.toString()
                                     showFinishDialog = true
                                 },
                                 onPause = {
@@ -920,11 +940,29 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
             sessions = vm.allBookSessions.filter { row -> sessionsDay == null || (!row.session.excludeFromStatistics && bookLocalDate(row.session.activityAt) == sessionsDay) },
             title = sessionsDay?.format(DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US)) ?: "Reading sessions",
             onDismiss = { showGlobalSessionsDialog = false },
+            readingListCollections = vm.collectionSuggestions,
+            onCopyReadingList = if (sessionsDay == null) ({ exportOptions, format ->
+                if (format == BookReadingListFormat.IMAGE) readingListImageOptions = exportOptions
+                else {
+                val list = formatBookReadingList(vm.statsBooks, vm.allBookSessions.map { it.session },
+                    options = exportOptions)
+                if (list.isNotBlank()) {
+                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Reading list", list))
+                    android.widget.Toast.makeText(context, "Reading list copied", android.widget.Toast.LENGTH_SHORT).show()
+                } else android.widget.Toast.makeText(context, "No reading history for this selection", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }) else null,
             onEdit = { session ->
                 vm.selectBook(session.bookId)
                 editingSessionId = session.id
             }
         )
+    }
+
+    readingListImageOptions?.let { options ->
+        BookReadingListImageDialog(vm.statsBooks, vm.allBookSessions.map { it.session }, options,
+            onDismiss = { readingListImageOptions = null })
     }
 
     selectedBook?.let { book ->
@@ -938,8 +976,8 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                     vm.addManualReadingNote(book.id, kind, dateText, pageText, minutesText, noteText)
                     manualLogInitialMode = null
                 },
-                onSaveSession = { endedText, minutesText, pageReachedText ->
-                    vm.addManualReadingSession(book.id, endedText, minutesText, pageReachedText)
+                onSaveSession = { endedText, minutesText, pageReachedText, bookmarkText ->
+                    vm.addManualReadingSession(book.id, endedText, minutesText, pageReachedText, bookmarkText)
                     manualLogInitialMode = null
                 }
             )
@@ -985,8 +1023,8 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                 session = session,
                 onExcludedChange = { vm.setSessionStatisticsExcluded(session, it) },
                 onDismiss = { editingSessionId = null },
-                onSave = { endedText, minutesText, pageReachedText, excluded ->
-                    vm.updateReadingSession(session, endedText, minutesText, pageReachedText, excluded)
+                onSave = { endedText, minutesText, pageReachedText, excluded, bookmarkText ->
+                    vm.updateReadingSession(session, endedText, minutesText, pageReachedText, excluded, bookmarkText)
                     editingSessionId = null
 
                 },
@@ -997,6 +1035,16 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                 }
             )
         } ?: run { editingSessionId = null }
+    }
+
+    val completionRatingBook = vm.completionRatingBook
+    if (completionRatingBook != null && !showSettings && !showFinishDialog &&
+        manualLogInitialMode == null && editingSessionId == null && editingNoteId == null) {
+        key(completionRatingBook.id) {
+            BookCompletionRatingDialog(completionRatingBook,
+                onDismiss = { vm.dismissCompletionRating(completionRatingBook.id) },
+                onSave = { rating, done -> vm.saveCompletionRating(completionRatingBook.id, rating, done) })
+        }
     }
 
     if (showFinishDialog && selectedBook != null) {
@@ -1010,8 +1058,8 @@ internal fun BookTrackerScreen(vm: BookTrackerViewModel) {
                 showFinishDialog = false
                 screenModeName = BookScreenMode.DETAIL.name
             },
-            onSave = {
-                if (vm.finishReading(selectedBook.id, finishPageDraft)) {
+            onSave = { bookmarkText, calculatedPagesRead ->
+                if (vm.finishReading(selectedBook.id, finishPageDraft, bookmarkText, calculatedPagesRead)) {
                     showFinishDialog = false
                     screenModeName = BookScreenMode.SESSION_NOTE.name
                 }

@@ -59,9 +59,10 @@ internal object BookGoalNotifications {
                 flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
                 putExtra("goal_book_id", book.id)
             }, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-            val time = progress.todaySeconds?.let { " · ~${bookFormatCompactHours(it)}" }.orEmpty()
-            val today = if (progress.todayRemaining == 0L) "Today's goal reached" else "${progress.todayRemaining} pages left today$time"
-            val total = "${progress.remainingPages} pages · ${progress.daysRemaining} days left" +
+            val time = if (progress.timeBased) "" else progress.todaySeconds?.let { " · ~${bookFormatCompactHours(it)}" }.orEmpty()
+            val today = if (progress.todayRemaining == 0L) "Today's goal reached" else "${progress.todayRemainingLabel} left today$time"
+            val total = (if (progress.timeBased) "${progress.todayProgressLabel} today\n" else "") +
+                (if (progress.hasFinishEstimate) "${progress.remainingPages} pages · ${progress.daysRemaining} days left" else "Finish estimate not available yet") +
                 progress.remainingSeconds?.let { " · ~${bookFormatCompactHours(it)}" }.orEmpty()
             val notification = NotificationCompat.Builder(context, CHANNEL)
                 .setSmallIcon(R.drawable.ic_book_goal_24).setContentTitle(book.title).setContentText(today)
@@ -69,7 +70,7 @@ internal object BookGoalNotifications {
                 .setSubText("Book goal").setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
                 .setShowWhen(false).setCategory(NotificationCompat.CATEGORY_PROGRESS)
                 .setProgress(progress.todayTarget.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
-                    progress.todayPages.coerceAtMost(progress.todayTarget).toInt(), false)
+                    progress.todayValue.coerceAtMost(progress.todayTarget).toInt(), false)
                 .setSilent(true).build()
             try { manager.notify(TAG, book.id, notification) } catch (_: SecurityException) { /* Permission may change while updating. */ }
         }

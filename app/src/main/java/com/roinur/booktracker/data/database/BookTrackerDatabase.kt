@@ -66,8 +66,10 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
         ensureBookColumns(db)
         ensureReadingSessionColumns(db)
         ensureSessionNoteSchema(db)
+        com.roinur.booktracker.data.markdown.BookMarkdownOutbox.ensureSchema(db)
         ensureReadingGoalsSchema(db)
         BookGoalRepository.ensureSchema(db)
+        BookReadingPlanRepository.ensureSchema(db)
         ensureCollectionTypesSchema(db)
         LegacyMigration.ensureSchema(db)
     }
@@ -77,8 +79,10 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
         ensureBookColumns(db)
         ensureReadingSessionColumns(db)
         ensureSessionNoteSchema(db)
+        com.roinur.booktracker.data.markdown.BookMarkdownOutbox.ensureSchema(db)
         ensureReadingGoalsSchema(db)
         BookGoalRepository.ensureSchema(db)
+        BookReadingPlanRepository.ensureSchema(db)
         ensureCollectionTypesSchema(db)
         LegacyMigration.ensureSchema(db)
         LegacyMigration.restoreMissingCompletionDates(db)
@@ -154,6 +158,12 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
                 columns += cursor.getString(cursor.getColumnIndexOrThrow("name")).orEmpty()
             }
         }
+        if ("list_sync_key" !in columns) db.execSQL("ALTER TABLE books ADD COLUMN list_sync_key TEXT NOT NULL DEFAULT ''")
+        if ("ownership" !in columns) db.execSQL("ALTER TABLE books ADD COLUMN ownership TEXT NOT NULL DEFAULT 'Unknown'")
+        if ("reading_priority" !in columns) db.execSQL("ALTER TABLE books ADD COLUMN reading_priority INTEGER NOT NULL DEFAULT 0")
+        if ("unlogged_pages" !in columns) db.execSQL("ALTER TABLE books ADD COLUMN unlogged_pages INTEGER")
+        if ("unlogged_seconds" !in columns) db.execSQL("ALTER TABLE books ADD COLUMN unlogged_seconds INTEGER")
+        if ("bookmark_page" !in columns) db.execSQL("ALTER TABLE books ADD COLUMN bookmark_page INTEGER")
         if ("parts_json" !in columns) db.execSQL("ALTER TABLE books ADD COLUMN parts_json TEXT NOT NULL DEFAULT '[]'")
         if ("finished_at_manual" !in columns) db.execSQL("ALTER TABLE books ADD COLUMN finished_at_manual INTEGER NOT NULL DEFAULT 0")
         if ("collections" !in columns) {
@@ -175,6 +185,7 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
         if ("pages_read" !in columns) {
             db.execSQL("ALTER TABLE reading_sessions ADD COLUMN pages_read INTEGER NOT NULL DEFAULT 0")
         }
+        if ("bookmark_page" !in columns) db.execSQL("ALTER TABLE reading_sessions ADD COLUMN bookmark_page INTEGER")
         if ("page_reached" !in columns) {
             db.execSQL("ALTER TABLE reading_sessions ADD COLUMN page_reached INTEGER NOT NULL DEFAULT 0")
         }
@@ -193,6 +204,8 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
             put("source_url", seed.sourceUrl)
             put("collections", normalizeBookCollections(seed.collections))
             put("parts_json", BookPartsStorage.encode(parts))
+            seed.ownership?.let { require(it in listOf("Unknown", "Owned", "Not owned")); put("ownership", it) }
+            seed.readingPriority?.let { require(it in 0..10); put("reading_priority", it) }
         }
         return if (existing != null) {
             writableDatabase.update("books", values, "id = ?", arrayOf(existing.id.toString()))
@@ -396,12 +409,14 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
         endedIso: String,
         durationSeconds: Long,
         pagesRead: Int = 0,
-        pageReached: Int = 0
+        pageReached: Int = 0,
+        bookmarkPage: Int? = null,
+        updateBookmark: Boolean = false
     ) {
         val safeDuration = durationSeconds.coerceAtLeast(1L)
         writableDatabase.beginTransaction()
         try {
-            writableDatabase.insertOrThrow(
+            val insertedId = writableDatabase.insertOrThrow(
                 "reading_sessions",
                 null,
                 ContentValues().apply {
@@ -412,13 +427,20 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
                     put("duration_milliseconds", safeDuration * 1000)
                     put("pages_read", pagesRead.coerceAtLeast(0))
                     put("page_reached", pageReached.coerceAtLeast(0))
+                    if (updateBookmark) {
+                        if (bookmarkPage == null) putNull("bookmark_page") else put("bookmark_page", bookmarkPage.coerceAtLeast(0))
+                    }
                 }
             )
             val existing = getBook(bookId)
+            val latestId = writableDatabase.rawQuery("SELECT id FROM reading_sessions WHERE book_id = ? ORDER BY COALESCE(NULLIF(ended_at, ''), started_at) DESC, id DESC LIMIT 1", arrayOf(bookId.toString())).use { if (it.moveToFirst()) it.getLong(0) else null }
             val values = ContentValues().apply {
                 put("reading_seconds", (existing?.readingSeconds ?: 0L) + safeDuration)
-                if (pageReached > 0) put("current_page", pageReached.coerceAtMost(existing?.pageCount?.takeIf { it > 0 } ?: Int.MAX_VALUE))
-                put("last_read_at", endedIso)
+                if (pageReached > 0) put("current_page", pageReached)
+                if (updateBookmark && insertedId == latestId) {
+                    if (bookmarkPage == null) putNull("bookmark_page") else put("bookmark_page", bookmarkPage.coerceAtLeast(0))
+                }
+                put("last_read_at", maxOf(existing?.lastReadAt.orEmpty(), endedIso))
                 if (existing != null && existing.pageCount > 0 && pageReached >= existing.pageCount) {
                     put("status", BookStatus.FINISHED.name)
                     put("finished_at", endedIso)
@@ -559,7 +581,7 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
     fun listSessions(bookId: Int): List<BookReadingSessionRow> {
         readableDatabase.rawQuery(
             """
-            SELECT id, book_id, started_at, ended_at, duration_seconds, duration_milliseconds, pages_read, page_reached, exclude_from_statistics
+            SELECT id, book_id, started_at, ended_at, duration_seconds, duration_milliseconds, pages_read, page_reached, bookmark_page, exclude_from_statistics
             FROM reading_sessions
             WHERE book_id = ?
             ORDER BY COALESCE(NULLIF(ended_at, ''), started_at) DESC, id DESC
@@ -576,6 +598,7 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
                     durationSeconds = cursor.getLong(cursor.getColumnIndexOrThrow("duration_seconds")).coerceAtLeast(0L),
                     pagesRead = cursor.getInt(cursor.getColumnIndexOrThrow("pages_read")).coerceAtLeast(0),
                     pageReached = cursor.getInt(cursor.getColumnIndexOrThrow("page_reached")).coerceAtLeast(0),
+                    bookmarkPage = cursor.getColumnIndexOrThrow("bookmark_page").let { if (cursor.isNull(it)) null else cursor.getInt(it) },
                     durationMilliseconds = cursor.getColumnIndexOrThrow("duration_milliseconds").let { if (cursor.isNull(it)) null else cursor.getLong(it) },
                     excludeFromStatistics = cursor.getInt(cursor.getColumnIndexOrThrow("exclude_from_statistics")) != 0
                 )
@@ -587,7 +610,7 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
     fun listAllSessions(): List<BookReadingSessionWithBook> {
         readableDatabase.rawQuery(
             """
-            SELECT rs.id, rs.book_id, rs.started_at, rs.ended_at, rs.duration_seconds, rs.duration_milliseconds, rs.pages_read, rs.page_reached, rs.exclude_from_statistics,
+            SELECT rs.id, rs.book_id, rs.started_at, rs.ended_at, rs.duration_seconds, rs.duration_milliseconds, rs.pages_read, rs.page_reached, rs.bookmark_page, rs.exclude_from_statistics,
                    b.title AS book_title
             FROM reading_sessions rs
             LEFT JOIN books b ON b.id = rs.book_id
@@ -606,6 +629,7 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
                         durationSeconds = cursor.getLong(cursor.getColumnIndexOrThrow("duration_seconds")).coerceAtLeast(0L),
                         pagesRead = cursor.getInt(cursor.getColumnIndexOrThrow("pages_read")).coerceAtLeast(0),
                         pageReached = cursor.getInt(cursor.getColumnIndexOrThrow("page_reached")).coerceAtLeast(0),
+                    bookmarkPage = cursor.getColumnIndexOrThrow("bookmark_page").let { if (cursor.isNull(it)) null else cursor.getInt(it) },
                     durationMilliseconds = cursor.getColumnIndexOrThrow("duration_milliseconds").let { if (cursor.isNull(it)) null else cursor.getLong(it) },
                     excludeFromStatistics = cursor.getInt(cursor.getColumnIndexOrThrow("exclude_from_statistics")) != 0
                     ),
@@ -629,10 +653,13 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
         pagesRead: Int,
         pageReached: Int,
         excludeFromStatistics: Boolean,
-        preserveProgress: Boolean = false
+        preserveProgress: Boolean = false,
+        bookmarkPage: Int? = null,
+        updateBookmark: Boolean = false
     ) {
         writableDatabase.beginTransaction()
         try {
+            val oldSession = listSessions(bookId).firstOrNull { it.id == sessionId } ?: error("The session no longer exists.")
             writableDatabase.update(
                 "reading_sessions",
                 ContentValues().apply {
@@ -643,11 +670,22 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
                     put("duration_milliseconds", durationSeconds.coerceAtLeast(1L) * 1000)
                     put("pages_read", pagesRead.coerceAtLeast(0))
                     put("page_reached", pageReached.coerceAtLeast(0))
+                    if (updateBookmark) {
+                        if (bookmarkPage == null) putNull("bookmark_page") else put("bookmark_page", bookmarkPage.coerceAtLeast(0))
+                    }
                 },
                 "id = ?",
                 arrayOf(sessionId.toString())
             )
-            recalculateBookReadingProgress(bookId, preserveProgress)
+            val totalPages = getBook(bookId)?.currentPage?.toLong()?.plus(pagesRead.coerceAtLeast(0) - oldSession.pagesRead)
+                ?.coerceIn(0L, Int.MAX_VALUE.toLong())?.toInt()
+            recalculateBookReadingProgress(bookId, preserveProgress, totalPages)
+            if (updateBookmark) {
+                val latestId = readableDatabase.rawQuery("SELECT id FROM reading_sessions WHERE book_id = ? ORDER BY COALESCE(NULLIF(ended_at, ''), started_at) DESC, id DESC LIMIT 1", arrayOf(bookId.toString())).use { if (it.moveToFirst()) it.getInt(0) else null }
+                if (latestId == sessionId) writableDatabase.update("books", ContentValues().apply {
+                    if (bookmarkPage == null) putNull("bookmark_page") else put("bookmark_page", bookmarkPage.coerceAtLeast(0))
+                }, "id = ?", arrayOf(bookId.toString()))
+            }
             writableDatabase.setTransactionSuccessful()
         } finally {
             writableDatabase.endTransaction()
@@ -690,26 +728,30 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
     fun deleteReadingSession(sessionId: Int, bookId: Int) {
         writableDatabase.beginTransaction()
         try {
+            val oldSession = listSessions(bookId).firstOrNull { it.id == sessionId } ?: error("The session no longer exists.")
+            val totalPages = getBook(bookId)?.currentPage?.minus(oldSession.pagesRead)?.coerceAtLeast(0)
             writableDatabase.delete(
                 "reading_sessions",
                 "id = ?",
                 arrayOf(sessionId.toString())
             )
-            recalculateBookReadingProgress(bookId)
+            recalculateBookReadingProgress(bookId, totalPagesRead = totalPages)
             writableDatabase.setTransactionSuccessful()
         } finally {
             writableDatabase.endTransaction()
         }
     }
 
-    private fun recalculateBookReadingProgress(bookId: Int, preserveProgress: Boolean = false) {
+    private fun recalculateBookReadingProgress(bookId: Int, preserveProgress: Boolean = false, totalPagesRead: Int? = null) {
         val book = getBook(bookId) ?: return
         var totalSeconds = 0L
+        var sessionPages = 0L
         var maxPageReached = book.currentPage
         var lastReadAt = book.lastReadAt
         readableDatabase.rawQuery(
             """
             SELECT SUM(COALESCE(duration_milliseconds, duration_seconds * 1000)) / 1000 AS seconds,
+                   SUM(pages_read) AS session_pages,
                    MAX(page_reached) AS max_page,
                    MAX(COALESCE(NULLIF(ended_at, ''), started_at)) AS last_read
             FROM reading_sessions
@@ -719,21 +761,34 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
         ).use { cursor ->
             if (cursor.moveToFirst()) {
                 totalSeconds = cursor.getLong(cursor.getColumnIndexOrThrow("seconds")).coerceAtLeast(0L)
+                sessionPages = cursor.getLong(cursor.getColumnIndexOrThrow("session_pages"))
                 maxPageReached = cursor.getInt(cursor.getColumnIndexOrThrow("max_page")).coerceAtLeast(0)
                 lastReadAt = cursor.getString(cursor.getColumnIndexOrThrow("last_read")).orEmpty()
             }
         }
-        val safePage = (if (preserveProgress) book.currentPage else maxPageReached).coerceIn(0, book.pageCount.takeIf { it > 0 } ?: Int.MAX_VALUE)
+        val offsets = readableDatabase.rawQuery("SELECT unlogged_pages, unlogged_seconds FROM books WHERE id = ?", arrayOf(bookId.toString())).use {
+            it.moveToFirst()
+            (if (it.isNull(0)) null else it.getLong(0)) to (if (it.isNull(1)) null else it.getLong(1))
+        }
+        totalSeconds = (totalSeconds + (offsets.second ?: 0L)).coerceAtLeast(0)
+        val aggregatePage = offsets.first?.let { (sessionPages + it).coerceIn(0, Int.MAX_VALUE.toLong()).toInt() } ?: maxPageReached
+        val safePage = (if (preserveProgress) book.currentPage else totalPagesRead ?: aggregatePage).coerceAtLeast(0)
+        val latestBookmark = readableDatabase.rawQuery("SELECT bookmark_page FROM reading_sessions WHERE book_id = ? ORDER BY COALESCE(NULLIF(ended_at, ''), started_at) DESC, id DESC LIMIT 1", arrayOf(bookId.toString())).use { cursor ->
+            if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getInt(0) else null
+        }
         writableDatabase.update(
             "books",
             ContentValues().apply {
                 put("reading_seconds", totalSeconds)
                 put("current_page", safePage)
+                if (!preserveProgress) {
+                    if (latestBookmark == null) putNull("bookmark_page") else put("bookmark_page", latestBookmark)
+                }
                 put("last_read_at", lastReadAt)
-                if (book.pageCount > 0 && safePage >= book.pageCount) {
+                if (!preserveProgress && book.pageCount > 0 && safePage >= book.pageCount) {
                     put("status", BookStatus.FINISHED.name)
                     put("finished_at", book.finishedAt.ifBlank { lastReadAt.ifBlank { Instant.now().toString() } })
-                } else if (book.status == BookStatus.FINISHED) {
+                } else if (!preserveProgress && book.status == BookStatus.FINISHED) {
                     put("status", BookStatus.READING.name)
                     put("finished_at", "")
                 }
@@ -771,6 +826,13 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
             put("finished_at", date.atStartOfDay(ZoneId.systemDefault()).toInstant().toString())
             put("finished_at_manual", 1)
         }, "id = ?", arrayOf(bookId.toString()))
+    }
+
+    /** Compare-and-set prevents a delayed completion popup from overwriting a newly saved rating. */
+    fun rateFinishedBookIfUnrated(bookId: Int, rating: Int): Boolean {
+        require(rating in 1..5)
+        return writableDatabase.update("books", ContentValues().apply { put("rating", rating) },
+            "id = ? AND status = ? AND rating <= 0", arrayOf(bookId.toString(), BookStatus.FINISHED.name)) == 1
     }
 
     fun updateRating(bookId: Int, rating: Int) {
@@ -829,7 +891,7 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
         writableDatabase.delete("books", "id = ?", arrayOf(bookId.toString()))
     }
 
-    private fun getBook(bookId: Int): BookRow? {
+    internal fun getBook(bookId: Int): BookRow? {
         readableDatabase.rawQuery("SELECT * FROM books WHERE id = ?", arrayOf(bookId.toString())).use { cursor ->
             return if (cursor.moveToFirst()) cursor.toBookRow() else null
         }
@@ -861,7 +923,11 @@ internal class BookTrackerDatabase(context: Context, databaseName: String = BOOK
             finishedAt = getString(getColumnIndexOrThrow("finished_at")).orEmpty(),
             lastReadAt = getString(getColumnIndexOrThrow("last_read_at")).orEmpty(),
             readingSeconds = getLong(getColumnIndexOrThrow("reading_seconds")).coerceAtLeast(0L),
-            parts = BookPartsStorage.decode(getString(getColumnIndexOrThrow("parts_json")).orEmpty())
+            parts = BookPartsStorage.decode(getString(getColumnIndexOrThrow("parts_json")).orEmpty()),
+            bookmarkPage = getColumnIndexOrThrow("bookmark_page").let { if (isNull(it)) null else getInt(it) },
+            listSyncKey = getString(getColumnIndexOrThrow("list_sync_key")).orEmpty(),
+            ownership = getString(getColumnIndexOrThrow("ownership")).orEmpty(),
+            readingPriority = getInt(getColumnIndexOrThrow("reading_priority"))
         )
     }
 }

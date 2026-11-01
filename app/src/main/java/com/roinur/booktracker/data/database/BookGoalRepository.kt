@@ -8,10 +8,10 @@ import java.time.LocalDate
 
 internal class BookGoalRepository(private val database: BookTrackerDatabase) {
     fun list(): Map<Int, BookGoal> = buildMap {
-        database.readableDatabase.rawQuery("SELECT book_id, mode, daily_pages, target_date, created_date FROM book_goals", null).use { cursor ->
+        database.readableDatabase.rawQuery("SELECT book_id, mode, daily_pages, target_date, created_date, daily_minutes FROM book_goals", null).use { cursor ->
             while (cursor.moveToNext()) {
                 val goal = BookGoal(cursor.getInt(0), BookGoalMode.valueOf(cursor.getString(1)), cursor.getInt(2),
-                    cursor.getString(3).takeIf { it.isNotBlank() }?.let(LocalDate::parse), LocalDate.parse(cursor.getString(4)))
+                    cursor.getString(3).takeIf { it.isNotBlank() }?.let(LocalDate::parse), LocalDate.parse(cursor.getString(4)), cursor.getInt(5))
                 put(goal.bookId, goal)
             }
         }
@@ -19,9 +19,11 @@ internal class BookGoalRepository(private val database: BookTrackerDatabase) {
 
     fun save(goal: BookGoal) {
         require(goal.mode != BookGoalMode.DAILY_PAGES || goal.dailyPages > 0)
+        require(goal.mode != BookGoalMode.DAILY_MINUTES || goal.dailyMinutes > 0)
         require(goal.mode != BookGoalMode.DEADLINE || goal.targetDate != null)
         val values = ContentValues().apply {
             put("book_id", goal.bookId); put("mode", goal.mode.name); put("daily_pages", goal.dailyPages)
+            put("daily_minutes", goal.dailyMinutes)
             put("target_date", goal.targetDate?.toString().orEmpty()); put("created_date", goal.createdDate.toString())
         }
         database.writableDatabase.insertWithOnConflict("book_goals", null, values, SQLiteDatabase.CONFLICT_REPLACE)
@@ -38,6 +40,12 @@ internal class BookGoalRepository(private val database: BookTrackerDatabase) {
                 target_date TEXT NOT NULL DEFAULT '', created_date TEXT NOT NULL,
                 FOREIGN KEY(book_id) REFERENCES books(id) ON DELETE CASCADE
             )""")
+            val hasMinutes = db.rawQuery("PRAGMA table_info(book_goals)", null).use { cursor ->
+                var found = false
+                while (cursor.moveToNext()) if (cursor.getString(1) == "daily_minutes") found = true
+                found
+            }
+            if (!hasMinutes) db.execSQL("ALTER TABLE book_goals ADD COLUMN daily_minutes INTEGER NOT NULL DEFAULT 0")
         }
     }
 }

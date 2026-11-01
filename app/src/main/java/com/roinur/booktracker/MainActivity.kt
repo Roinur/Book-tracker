@@ -48,7 +48,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (::bookVm.isInitialized) bookVm.reload()
+        if (::bookVm.isInitialized) {
+            bookVm.reload()
+            com.roinur.booktracker.data.booklist.BookListSync.enqueue(this)
+            com.roinur.booktracker.data.markdown.BookMarkdownSync.enqueue(this)
+        }
     }
 
     private fun handleBookGoalNotification(intent: Intent?) {

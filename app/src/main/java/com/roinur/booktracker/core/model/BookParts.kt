@@ -19,7 +19,7 @@ internal fun validateBookParts(parts: List<BookPart>, totalPages: Int = 0): List
     return sorted
 }
 
-internal fun BookRow.currentPart(): BookPart? = parts.firstOrNull { currentPage >= it.startPage - 1 && currentPage < it.endPage }
+internal fun BookRow.currentPart(): BookPart? = parts.firstOrNull { readingPage >= it.startPage - 1 && readingPage < it.endPage }
 
 internal data class BookPartReading(val pages: Long = 0, val seconds: Long = 0)
 
@@ -41,7 +41,7 @@ internal fun bookSessionsWithPageFallback(sessions: List<BookReadingSessionRow>)
             ?: java.time.Instant.MIN
     sessions.withIndex().sortedWith(compareBy<IndexedValue<BookReadingSessionRow>> { date(it.value) }
         .thenBy { it.value.id }.thenBy { it.index }).forEach { (index, session) ->
-        val end = if (session.pageReached > 0) session.pageReached.toLong()
+        val end = if (session.bookmarkPage != null) session.bookmarkPage.toLong() else if (session.pageReached > 0) session.pageReached.toLong()
             else (cursorByBook[session.bookId] ?: 0L) + session.pagesRead.coerceAtLeast(0)
         cursorByBook[session.bookId] = end
         if (session.pageReached <= 0 && session.pagesRead > 0) result[index] = session.copy(pageReached = end.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
@@ -55,8 +55,8 @@ internal fun bookPartReading(parts: List<BookPart>, sessions: List<BookReadingSe
     val seconds = LongArray(parts.size)
     bookSessionsWithPageFallback(sessions).forEach { session ->
         val read = session.pagesRead.toLong().coerceAtLeast(0)
-        if (read == 0L || session.pageReached <= 0) return@forEach
-        val end = session.pageReached.toLong()
+        if (read == 0L || (session.bookmarkPage ?: session.pageReached) <= 0) return@forEach
+        val end = (session.bookmarkPage ?: session.pageReached).toLong()
         val start = (end - read + 1).coerceAtLeast(1)
         val duration = session.durationSeconds.coerceAtLeast(0)
         var allocatedPages = 0L
@@ -88,8 +88,8 @@ internal fun bookWorkStatistics(books: List<BookRow>, sessions: List<BookReading
         val readings = bookPartReading(book.parts, logged)
         if (book.status != BookStatus.FINISHED) {
             book.parts.forEachIndexed { index, part ->
-                if (!part.completed(book.currentPage)) return@forEachIndexed
-                val allocatedPages = (if (allTime) part.pageCount.toLong() else readings[index].pages).coerceIn(0, pages)
+                if (!part.completed(book.readingPage)) return@forEachIndexed
+                val allocatedPages = (if (allTime && book.bookmarkPage == null) part.pageCount.toLong() else readings[index].pages).coerceIn(0, pages)
                 val allocatedSeconds = readings[index].seconds.coerceIn(0, seconds)
                 rows += BookWorkStatistics(book.id, part.title, book.title, allocatedPages, allocatedSeconds, part.coverUrl.ifBlank { book.coverUrl })
                 pages -= allocatedPages; seconds -= allocatedSeconds

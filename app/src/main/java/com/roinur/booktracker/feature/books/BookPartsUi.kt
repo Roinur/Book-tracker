@@ -36,18 +36,27 @@ internal fun BookPartsProgressBar(book: BookRow, modifier: Modifier = Modifier, 
     val accent = MaterialTheme.colorScheme.primary
     val track = MaterialTheme.colorScheme.surfaceVariant
     val gap = MaterialTheme.colorScheme.surface
-    val shape = RoundedCornerShape(99.dp)
+    val bookmarkColor = bookBookmarkColor()
+    val markerHeight = if (book.bookmarkPage != null) 8.dp else 4.dp
     val interactive = if (book.parts.isNotEmpty() && onOpenParts != null) Modifier
         .semantics { contentDescription = "Parts of ${book.title}, ${book.currentPage} of ${book.pageCount} pages" }
         .fittedClickable(RoundedCornerShape(4.dp), onClick = onOpenParts) else Modifier
-    Box(modifier.then(interactive).height(4.dp), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.fillMaxWidth().height(4.dp).clip(shape)) {
-            val radius = CornerRadius(size.height / 2)
-            drawRoundRect(track, cornerRadius = radius)
-            if (book.progressFraction > 0) drawRoundRect(accent, size = Size(size.width * book.progressFraction, size.height), cornerRadius = radius)
+    Box(modifier.then(interactive).semantics { book.bookmarkPage?.let { contentDescription = "Continue from page $it" } }.height(markerHeight), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxWidth().height(markerHeight)) {
+            val barHeight = 4.dp.toPx()
+            val y = (size.height - barHeight) / 2
+            val radius = CornerRadius(barHeight / 2)
+            drawRoundRect(track, topLeft = Offset(0f, y), size = Size(size.width, barHeight), cornerRadius = radius)
+            if (book.progressFraction > 0) drawRoundRect(accent, topLeft = Offset(0f, y), size = Size(size.width * book.progressFraction, barHeight), cornerRadius = radius)
             if (book.pageCount > 0) book.parts.flatMap { listOf(it.startPage - 1, it.endPage) }.distinct().filter { it > 0 && it < book.pageCount }.forEach { page ->
                 val x = size.width * page / book.pageCount
-                drawLine(gap, Offset(x, 0f), Offset(x, size.height), strokeWidth = 2.dp.toPx())
+                drawLine(gap, Offset(x, y), Offset(x, y + barHeight), strokeWidth = 2.dp.toPx())
+            }
+            if (book.pageCount > 0) book.bookmarkPage?.let { page ->
+                val halfWidth = 1.5.dp.toPx()
+                val x = (size.width * (page.toFloat() / book.pageCount).coerceIn(0f, 1f)).coerceIn(halfWidth, (size.width - halfWidth).coerceAtLeast(halfWidth))
+                drawLine(gap, Offset(x, 0f), Offset(x, size.height), strokeWidth = 5.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                drawLine(bookmarkColor, Offset(x, 0f), Offset(x, size.height), strokeWidth = 3.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
             }
         }
     }
@@ -67,9 +76,9 @@ internal fun BookPartsOverview(book: BookRow, sessions: List<BookReadingSessionR
         Text(book.title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
         LazyColumn(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
             itemsIndexed(book.parts) { index, part ->
-                val read = part.pagesRead(book.currentPage)
+                val read = if (book.bookmarkPage != null) readings[index].pages.coerceAtMost(part.pageCount.toLong()).toInt() else part.pagesRead(book.currentPage)
                 val active = part == book.currentPart()
-                val remainingSeconds = bookPartRemainingSeconds(part, book.currentPage, timedReadings[index], fallbackPagesPerHour)
+                val remainingSeconds = bookPartRemainingSeconds(part, book.readingPage, timedReadings[index], fallbackPagesPerHour)
                 var displayRating by remember(part.title, part.startPage, part.endPage, part.rating) { mutableStateOf(part.rating) }
                 var previewRating by remember { mutableStateOf<Int?>(null) }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -77,14 +86,14 @@ internal fun BookPartsOverview(book: BookRow, sessions: List<BookReadingSessionR
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(part.title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
-                        if (part.completed(book.currentPage)) Icon(painterResource(R.drawable.ic_check_24), "Finished part", Modifier.size(20.dp), MaterialTheme.colorScheme.primary)
+                        if (part.completed(book.readingPage)) Icon(painterResource(R.drawable.ic_check_24), "Finished part", Modifier.size(20.dp), MaterialTheme.colorScheme.primary)
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("p.${part.startPage}–${part.endPage}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text("$read / ${part.pageCount} pages", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                     }
                     LinearProgressIndicator(progress = { read.toFloat() / part.pageCount }, modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(99.dp)))
-                    Text(if (part.completed(book.currentPage)) "Finished" else if (active) "Reading · ${part.pageCount - read} pages left" else "Not started",
+                    Text(if (part.completed(book.readingPage)) "Finished" else if (active) "Reading · ${part.pageCount - read} pages left" else "Not started",
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(bookFormatDuration(readings[index].seconds) + " read" +
                         if (remainingSeconds != null && remainingSeconds > 0) " · ~${bookFormatDuration(remainingSeconds)} left" else "", style = MaterialTheme.typography.labelMedium,

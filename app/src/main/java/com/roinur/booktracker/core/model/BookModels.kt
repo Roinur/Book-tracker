@@ -81,7 +81,9 @@ data class BookSeed(
     val coverUrl: String,
     val sourceUrl: String,
     val collections: String,
-    val parts: List<BookPart>? = null
+    val parts: List<BookPart>? = null,
+    val ownership: String? = null,
+    val readingPriority: Int? = null
 )
 
 data class BookRow(
@@ -103,8 +105,14 @@ data class BookRow(
     val finishedAt: String,
     val lastReadAt: String,
     val readingSeconds: Long,
-    val parts: List<BookPart> = emptyList()
+    val parts: List<BookPart> = emptyList(),
+    val bookmarkPage: Int? = null,
+    val listSyncKey: String = "",
+    val ownership: String = "Unknown",
+    val readingPriority: Int = 0
 ) {
+    /** Printed location is independent of the lifetime number of pages actually read. */
+    val readingPage: Int get() = bookmarkPage ?: currentPage
     val progressFraction: Float
         get() = if (pageCount <= 0) 0f else (currentPage.toFloat() / pageCount.toFloat()).coerceIn(0f, 1f)
 }
@@ -134,7 +142,8 @@ data class BookReadingSessionRow(
     val pagesRead: Int,
     val pageReached: Int,
     val durationMilliseconds: Long? = null,
-    val excludeFromStatistics: Boolean = false
+    val excludeFromStatistics: Boolean = false,
+    val bookmarkPage: Int? = null
 ) {
     val activityAt: String get() = endedAt.ifBlank { startedAt }
 }

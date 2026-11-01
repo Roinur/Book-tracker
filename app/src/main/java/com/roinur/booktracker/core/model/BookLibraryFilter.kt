@@ -25,9 +25,10 @@ enum class BookLibraryFilter(val label: String) {
     FINISHED("Finished"),
     NOT_STARTED("Not started"),
     ON_HOLD("On hold"),
-    ALL("All");
+    ALL("All"),
+    PLAN("Plan");
 
-    fun next(): BookLibraryFilter = entries[(ordinal + 1) % entries.size]
+    fun next(): BookLibraryFilter = if (this == PLAN) ALL else entries[(ordinal + 1) % (entries.size - 1)]
 
     companion object {
         fun fromStorage(raw: String?): BookLibraryFilter =
@@ -41,5 +42,6 @@ fun BookLibraryFilter.matches(book: BookRow, activeBookId: Int?): Boolean = when
     BookLibraryFilter.NOT_STARTED -> book.status == BookStatus.WISHLIST
     BookLibraryFilter.ON_HOLD -> book.status == BookStatus.PAUSED
     BookLibraryFilter.ALL -> true
+    BookLibraryFilter.PLAN -> true // Membership and ordering are supplied by the active plan.
 }
 

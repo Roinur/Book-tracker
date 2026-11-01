@@ -51,8 +51,8 @@ internal fun BookQuickNoteDialog(
     val pickerColors = MaterialTheme.colorScheme
     val context = LocalContext.current
     var dateDraft by rememberSaveable { mutableStateOf(bookNowEditableDate()) }
-    var pageDraft by rememberSaveable(book.id) { mutableStateOf(book.currentPage.takeIf { it > 0 }?.toString().orEmpty()) }
-    var textDraft by rememberAutoSavedBookNote("quick_${book.id}_${kind.name}", book.id, { dateDraft }, { pageDraft.toIntOrNull() ?: book.currentPage }, { kind })
+    var pageDraft by rememberSaveable(book.id) { mutableStateOf(book.readingPage.takeIf { it > 0 }?.toString().orEmpty()) }
+    var textDraft by rememberAutoSavedBookNote("quick_${book.id}_${kind.name}", book.id, { dateDraft }, { pageDraft.toIntOrNull() ?: book.readingPage }, { kind })
     fun showDateTimePicker() {
         val current = bookEditableDateToLocal(dateDraft)
         DatePickerDialog(

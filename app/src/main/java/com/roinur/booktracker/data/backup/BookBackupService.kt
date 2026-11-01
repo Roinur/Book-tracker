@@ -33,6 +33,8 @@ internal class BookBackupService(private val database: BookTrackerDatabase, priv
                 put("reading_goals", exportTable(snapshot, "reading_goals"))
                 put("collection_types", exportTable(snapshot, "collection_types"))
                 put("book_goals", exportTable(snapshot, "book_goals"))
+                put("reading_plans", exportTable(snapshot, "reading_plans"))
+                put("reading_plan_books", exportTable(snapshot, "reading_plan_books"))
             }
             snapshot.setTransactionSuccessful()
             return backup

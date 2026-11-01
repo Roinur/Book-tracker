@@ -4,6 +4,11 @@ import androidx.compose.material3.Text
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,6 +28,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -50,6 +56,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -86,7 +93,7 @@ internal fun BookReadingSessionScreen(
     val remainingPartSeconds = remember(book, sessions, fallbackPagesPerHour) {
         currentPart?.let { part ->
             val timed = bookSessionsWithPageFallback(sessions.filter { it.bookId == book.id }).filter { !it.excludeFromStatistics && it.pagesRead > 0 && it.durationSeconds > 0 }
-            bookPartRemainingSeconds(part, book.currentPage, bookPartReading(listOf(part), timed).single(), fallbackPagesPerHour)
+            bookPartRemainingSeconds(part, book.readingPage, bookPartReading(listOf(part), timed).single(), fallbackPagesPerHour)
         }
     }
     val countdownRemainingMs = (countdownEndMs - nowMs).coerceAtLeast(0L)
@@ -129,8 +136,8 @@ internal fun BookReadingSessionScreen(
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = if (currentPart != null) Modifier.fittedClickable(RoundedCornerShape(8.dp)) { showParts = true } else Modifier)
             Text(
-                text = if (currentPart != null) "Part · p.${book.currentPage}–${currentPart.endPage} · ${currentPart.endPage - book.currentPage} pages left"
-                    else if (book.pageCount > 0) "${book.currentPage}/${book.pageCount}" else "${book.currentPage} pages",
+                text = if (currentPart != null) "Part · p.${book.readingPage}–${currentPart.endPage} · ${currentPart.endPage - book.readingPage} pages left"
+                    else if (book.pageCount > 0) "${book.readingPage}/${book.pageCount}" else "Page ${book.readingPage}",
                 style = if (currentPart != null) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis
             )
@@ -305,92 +312,6 @@ internal fun BookReadingActionIcon(
                 )
                 drawLine(tint, Offset(w * 0.32f, h * 0.36f), Offset(w * 0.68f, h * 0.36f), strokeWidth = stroke, cap = StrokeCap.Round)
                 drawLine(tint, Offset(w * 0.32f, h * 0.54f), Offset(w * 0.62f, h * 0.54f), strokeWidth = stroke, cap = StrokeCap.Round)
-            }
-        }
-    }
-}
-
-@Composable
-internal fun FinishReadingDialog(
-    book: BookRow,
-    pageDraft: String,
-    onPageChange: (String) -> Unit,
-    onDismiss: () -> Unit,
-    onDiscard: () -> Unit,
-    onSave: () -> Unit
-) {
-    var calculatorExpanded by rememberSaveable(book.id) { mutableStateOf(false) }
-    var calculatorStart by rememberSaveable(book.id) { mutableStateOf("") }
-    var calculatorEnd by rememberSaveable(book.id) { mutableStateOf("") }
-    fun updateCalculation(start: String, end: String) {
-        calculatedBookPage(book.currentPage, start, end)?.let { onPageChange(it.toString()) }
-    }
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(
-                modifier = Modifier
-                    .padding(24.dp)
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(8.dp))
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f), RoundedCornerShape(8.dp)),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
-                        .background(MaterialTheme.colorScheme.primary)
-                        .padding(vertical = 14.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("Finish reading", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
-                }
-                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(book.title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    OutlinedTextField(
-                        value = pageDraft,
-                        onValueChange = onPageChange,
-                        label = { Text("Page number") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Column(Modifier.fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))) {
-                        BookDisclosureHeader("Page calculator", R.drawable.ic_calculator_24, calculatorExpanded) { calculatorExpanded = !calculatorExpanded }
-                        if (calculatorExpanded) {
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                            OutlinedTextField(
-                                value = calculatorStart,
-                                onValueChange = { calculatorStart = it; updateCalculation(it, calculatorEnd) },
-                                label = { Text("Start page") }, singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f)
-                            )
-                            OutlinedTextField(
-                                value = calculatorEnd,
-                                onValueChange = { calculatorEnd = it; updateCalculation(calculatorStart, it) },
-                                label = { Text("End page") }, singleLine = true,
-                                isError = calculatorStart.isNotBlank() && calculatorEnd.isNotBlank() && calculatedBookPage(book.currentPage, calculatorStart, calculatorEnd) == null,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f)
-                            )
-                        }
-                        val calculated = calculatedBookPage(book.currentPage, calculatorStart, calculatorEnd)
-                        if (calculated != null) Text("${calculated - book.currentPage} pages read", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                    }
-                    Button(onClick = onSave, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-                        Text("Save")
-                    }
-                    TextButton(onClick = onDiscard) {
-                        Text("Don't save session")
-                    }
-                }
             }
         }
     }

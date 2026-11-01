@@ -13,3 +13,5 @@ Build with JDK 17:
 Update with `adb install -r app/build/outputs/apk/release/app-release.apk`. Keep `com.roinur.booktracker` and increment versionCode for every distributed update. Do not uninstall or clear storage.
 
 The visible versionName changes only for a GitHub release, when explicitly requested. Local APK updates retain that versionName and increment only Android versionCode. The initial GitHub release is 1.0.
+
+A signing-properties file can stay outside the checkout. Pass its path with `-PBOOK_TRACKER_SIGNING_PROPERTIES=<absolute-path-to-keystore.properties>`; relative store paths retain the original file's sibling app-directory base. The property contains a path, not credentials. Never pass passwords on a command line or commit private signing inputs.

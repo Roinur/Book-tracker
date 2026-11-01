@@ -83,6 +83,8 @@ internal fun BookLibraryHeader(
 ) {
     val highlightedBook = mostRecentlyReadBook(vm.statsBooks, vm.allBookSessions, vm.activeBookId)
     var showLayoutDialog by rememberSaveable { mutableStateOf(false) }
+    var showReadingPlans by rememberSaveable { mutableStateOf(false) }
+    if (showReadingPlans) BookReadingPlansDialog(vm) { showReadingPlans = false }
     var partsBookId by rememberSaveable { mutableStateOf<Int?>(null) }
     vm.statsBooks.firstOrNull { it.id == partsBookId }?.let { book ->
         val history = vm.allBookSessions.map { it.session }
@@ -163,7 +165,7 @@ internal fun BookLibraryHeader(
                         ) {
                             Text(
                                 if (vm.activeBookId == book.id) {
-                                    "Resume · p.${book.currentPage} · ${bookFormatDuration(liveSeconds)}"
+                                    "Resume · p.${book.readingPage} · ${bookFormatDuration(liveSeconds)}"
                                 } else {
                                     "Continue"
                                 }
@@ -199,7 +201,8 @@ internal fun BookLibraryHeader(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
                             .fillMaxHeight()
-                            .fittedClickable(RoundedCornerShape(0.dp), onClick = vm::cycleLibraryFilter)
+                            .fittedCombinedClickable(RoundedCornerShape(0.dp), onClick = vm::cycleLibraryFilter,
+                                onLongClick = { showReadingPlans = true })
                             .padding(horizontal = 10.dp)
                     ) {
                         Text(
@@ -265,7 +268,7 @@ internal fun BookLibraryHeader(
             BookLibraryCollections(vm, onOpenCollectionProgress)
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
                 BookSortField.entries.filter { it != BookSortField.ADDED }.forEach { field ->
-                    val selected = vm.sortField == field
+                    val selected = vm.sortField == field && vm.libraryFilter != BookLibraryFilter.PLAN
                     val shape = RoundedCornerShape(10.dp)
                     Box(
                         contentAlignment = Alignment.Center,
@@ -283,7 +286,7 @@ internal fun BookLibraryHeader(
                                 else MaterialTheme.colorScheme.outline,
                                 shape = shape
                             )
-                            .fittedClickable(shape) { vm.toggleSort(field) }
+                            .fittedClickable(shape, enabled = vm.libraryFilter != BookLibraryFilter.PLAN) { vm.toggleSort(field) }
                             .padding(horizontal = 2.dp, vertical = 8.dp)
                     ) {
                         Text(

@@ -1,4 +1,5 @@
 import java.util.Properties
+import java.io.File
 
 plugins {
     id("com.android.application")
@@ -10,9 +11,15 @@ android {
     compileSdk = 34
     testBuildType = "release"
 
+    val signingPropertiesFile = providers.gradleProperty("BOOK_TRACKER_SIGNING_PROPERTIES").orNull
+        ?.let { rootProject.file(it) } ?: rootProject.file("keystore.properties")
     val localKeystoreProperties = Properties().apply {
-        val propertiesFile = rootProject.file("keystore.properties")
-        if (propertiesFile.exists()) propertiesFile.inputStream().use(::load)
+        if (signingPropertiesFile.exists()) signingPropertiesFile.inputStream().use(::load)
+    }
+    // Optional installation-specific hint from the vault's integration guide; never a grant or credential.
+    val markdownTarget = Properties().apply {
+        val targetFile = rootProject.file("markdown-export-target.properties")
+        if (targetFile.exists()) targetFile.inputStream().use(::load)
     }
     val releaseStoreFile = localKeystoreProperties.getProperty("storeFile")
         ?: (findProperty("BOOK_TRACKER_RELEASE_STORE_FILE") as String?)
@@ -31,9 +38,12 @@ android {
         applicationId = "com.roinur.booktracker"
         minSdk = 26
         targetSdk = 34
-        versionCode = 88
-        versionName = "1.1"
+        versionCode = 121
+        versionName = "1.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        val folderHint = markdownTarget.getProperty("folderId", "")
+        require(folderHint.isEmpty() || folderHint.matches(Regex("[A-Za-z0-9_-]+")))
+        buildConfigField("String", "MARKDOWN_EXPORT_FOLDER_HINT", "\"$folderHint\"")
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
@@ -41,7 +51,8 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file(releaseStoreFile)
+            storeFile = if (File(releaseStoreFile).isAbsolute) file(releaseStoreFile)
+                else File(signingPropertiesFile.parentFile.resolve("app"), releaseStoreFile)
             storePassword = releaseStorePassword
             keyAlias = releaseKeyAlias
             keyPassword = releaseKeyPassword
@@ -78,6 +89,7 @@ android {
     }
 
     buildFeatures {
+        buildConfig = true
         compose = true
     }
 
@@ -114,9 +126,11 @@ dependencies {
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
     implementation("com.google.mlkit:text-recognition:16.0.1")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
-    implementation("com.google.android.gms:play-services-auth:21.5.0")
+    implementation("com.google.android.gms:play-services-auth:22.0.0")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
 

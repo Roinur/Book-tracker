@@ -10,6 +10,7 @@
 *.key
 keystore.properties
 local.properties
+markdown-export-target.properties
 *.apk
 *.aab
 *.db

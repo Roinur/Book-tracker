@@ -35,8 +35,15 @@ internal fun BookGoalCard(book: BookRow, goal: BookGoal?, progress: BookGoalProg
         HorizontalPager(pager, pageSpacing = 16.dp, modifier = Modifier.weight(1f).fillMaxWidth()) { page ->
             if (page == 0) Column(Modifier.fillMaxSize().clip(RoundedCornerShape(6.dp)).padding(horizontal = 2.dp), verticalArrangement = Arrangement.SpaceEvenly) {
                 BookMetricLabel(R.drawable.ic_book_24, "Pages read")
-                Text(if (book.pageCount > 0) "${book.currentPage} / ${book.pageCount}" else "${book.currentPage}",
-                    style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(if (book.pageCount > 0) "${book.currentPage} / ${book.pageCount}" else "${book.currentPage}",
+                        modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                    book.bookmarkPage?.let { page ->
+                        val green = bookBookmarkColor()
+                        Icon(painterResource(R.drawable.ic_bookmark_24), "Bookmark", Modifier.size(14.dp), green)
+                        Text("p.$page", style = MaterialTheme.typography.labelSmall, color = green)
+                    }
+                }
                 BookPartsProgressBar(book, Modifier.fillMaxWidth(), onOpenParts = { showParts = true })
             } else Column(Modifier.fillMaxSize().clip(RoundedCornerShape(6.dp)).padding(horizontal = 2.dp).fittedClickable(RoundedCornerShape(6.dp), onClick = onConfigure),
                 verticalArrangement = Arrangement.SpaceEvenly) {
@@ -48,16 +55,17 @@ internal fun BookGoalCard(book: BookRow, goal: BookGoal?, progress: BookGoalProg
                 if (progress == null) {
                     Text("Add goal", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.SemiBold)
-                    Text("Finish by · Pages daily", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Finish by · Pages or minutes", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
-                    Text(if (progress.completed) "Book completed" else "${progress.todayRemaining} pages left",
+                    Text(if (progress.completed) "Book completed" else "${progress.todayRemainingLabel} left",
                         style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(if (progress.completed || progress.todayRemaining == 0L) "Today's goal reached" else
-                        progress.todaySeconds?.let { "~${bookFormatCompactHours(it)} today" } ?: "Time not available yet",
+                        if (progress.timeBased) progress.todayProgressLabel else progress.todaySeconds?.let { "~${bookFormatCompactHours(it)} today" } ?: "Time not available yet",
                         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                     LinearProgressIndicator(progress = { progress.todayFraction }, strokeCap = StrokeCap.Round,
                         modifier = Modifier.fillMaxWidth().height(3.dp).clip(CircleShape))
-                    Text("${progress.remainingPages}p · ${progress.daysRemaining}d" + progress.dailySeconds?.let { " · ~${bookFormatCompactHours(it)}/day" }.orEmpty(),
+                    Text((if (progress.hasFinishEstimate) "${progress.remainingPages}p · ${progress.daysRemaining}d" else "Finish estimate not available") +
+                        (if (progress.timeBased) "" else progress.dailySeconds?.let { " · ~${bookFormatCompactHours(it)}/day" }.orEmpty()),
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }

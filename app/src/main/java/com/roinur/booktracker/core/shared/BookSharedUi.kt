@@ -830,7 +830,8 @@ internal fun Modifier.fittedCombinedClickable(
     shape: Shape = RoundedCornerShape(8.dp),
     enabled: Boolean = true,
     onClick: () -> Unit,
-    onLongClick: (() -> Unit)? = null
+    onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null
 ): Modifier {
     val interactionSource = remember { MutableInteractionSource() }
     return clip(shape).combinedClickable(
@@ -838,6 +839,7 @@ internal fun Modifier.fittedCombinedClickable(
         interactionSource = interactionSource,
         indication = rememberRipple(bounded = true),
         onClick = onClick,
+        onLongClickLabel = onLongClickLabel,
         onLongClick = onLongClick
     )
 }

@@ -67,6 +67,9 @@ internal fun rememberAutoSavedBookNote(scope: String, bookId: Int, date: () -> S
                 ?: parseBookSessionEditDate(raw)?.toString() ?: Instant.now().toString()
             if (noteId != null) db.updateReadingNote(noteId, iso, currentPage.value(), value)
             else if (bookId > 0) db.saveLiveReadingNote(liveKey ?: bookLiveNoteKey(context, "new_${bookId}_${currentKind.value().name}"), bookId, iso, currentPage.value(), durationSeconds, value, currentKind.value())
+        }.onSuccess {
+            // Scheduling is independent of the already committed local note and durable SQLite outbox.
+            runCatching { com.roinur.booktracker.data.markdown.BookMarkdownSync.enqueue(context) }
         }.onFailure { Toast.makeText(context, "Could not save note. Local draft retained.", Toast.LENGTH_LONG).show() }
     }
     return object : androidx.compose.runtime.MutableState<String> {

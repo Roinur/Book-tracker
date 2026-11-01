@@ -30,6 +30,7 @@ internal fun BookGoalDialog(book: BookRow, goal: BookGoal?, sessions: List<BookR
     var modeName by rememberSaveable(book.id) { mutableStateOf((goal?.mode ?: BookGoalMode.DEADLINE).name) }
     val mode = BookGoalMode.valueOf(modeName)
     var pages by rememberSaveable { mutableStateOf((goal?.dailyPages?.takeIf { it > 0 } ?: 50).toString()) }
+    var minutes by rememberSaveable { mutableStateOf((goal?.dailyMinutes?.takeIf { it > 0 } ?: 30).toString()) }
     var amount by rememberSaveable { mutableStateOf((goal?.targetDate?.let { (ChronoUnit.DAYS.between(today, it) + 1).coerceAtLeast(1) } ?: 7).toString()) }
     var unit by rememberSaveable { mutableStateOf("Days") }
     var deadlineEdited by rememberSaveable { mutableStateOf(false) }
@@ -37,8 +38,12 @@ internal fun BookGoalDialog(book: BookRow, goal: BookGoal?, sessions: List<BookR
     var saving by remember { mutableStateOf(false) }
     var saveError by remember { mutableStateOf(false) }
     val saved: (Boolean) -> Unit = { success -> saving = false; saveError = !success; if (success) onDismiss() }
-    val value = if (mode == BookGoalMode.DAILY_PAGES) pages.toIntOrNull() ?: 0 else amount.toIntOrNull() ?: 0
-    val deadline = if (value <= 0) null else when (unit) {
+    val value = when (mode) {
+        BookGoalMode.DAILY_PAGES -> pages.toIntOrNull() ?: 0
+        BookGoalMode.DAILY_MINUTES -> minutes.toIntOrNull() ?: 0
+        BookGoalMode.DEADLINE -> amount.toIntOrNull() ?: 0
+    }
+    val deadline = if (mode != BookGoalMode.DEADLINE || value <= 0) null else when (unit) {
         "Weeks" -> today.plusWeeks(value.toLong()).minusDays(1)
         "Months" -> today.plusMonths(value.toLong()).minusDays(1)
         else -> today.plusDays(value.toLong() - 1)
@@ -46,8 +51,9 @@ internal fun BookGoalDialog(book: BookRow, goal: BookGoal?, sessions: List<BookR
     val draft = BookGoal(book.id, mode, if (mode == BookGoalMode.DAILY_PAGES) value else 0,
         if (mode == BookGoalMode.DEADLINE) {
             if (!deadlineEdited && goal?.mode == BookGoalMode.DEADLINE) goal.targetDate else deadline
-        } else null, goal?.createdDate ?: today)
-    val valid = value > 0 && book.pageCount > 0 && book.status != BookStatus.FINISHED && book.currentPage < book.pageCount
+        } else null, goal?.createdDate ?: today, dailyMinutes = if (mode == BookGoalMode.DAILY_MINUTES) value else 0)
+    val valid = value > 0 && (book.pageCount > 0 || mode == BookGoalMode.DAILY_MINUTES) &&
+        book.status != BookStatus.FINISHED && (book.pageCount <= 0 || book.currentPage < book.pageCount)
     val progress = if (valid) bookGoalProgress(book, draft, sessions, books = books, collectionTypes = collectionTypes) else goal?.let { bookGoalProgress(book, it, sessions, books = books, collectionTypes = collectionTypes) }
     val colors = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(8.dp)
@@ -72,39 +78,45 @@ internal fun BookGoalDialog(book: BookRow, goal: BookGoal?, sessions: List<BookR
                 } else {
                     Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            BookGoalMode.entries.forEach { option ->
-                                val selected = mode == option
+                            listOf(BookGoalMode.DEADLINE, BookGoalMode.DAILY_PAGES).forEach { option ->
+                                val selected = if (option == BookGoalMode.DEADLINE) mode == option else mode != BookGoalMode.DEADLINE
                                 Box(Modifier.weight(1f).height(40.dp).background(if (selected) colors.primaryContainer else colors.surface, shape)
                                     .border(1.dp, if (selected) colors.primary else colors.outline, shape)
-                                    .fittedClickable(shape) { modeName = option.name }, contentAlignment = Alignment.Center) {
-                                    Text(if (option == BookGoalMode.DEADLINE) "Finish in" else "Pages daily", style = MaterialTheme.typography.labelLarge,
+                                    .fittedClickable(shape) { if (!selected) modeName = option.name }, contentAlignment = Alignment.Center) {
+                                    Text(if (option == BookGoalMode.DEADLINE) "Finish in" else "Daily goal", style = MaterialTheme.typography.labelLarge,
                                         color = if (selected) colors.onPrimaryContainer else colors.onSurfaceVariant)
                                 }
                             }
                         }
-                        OutlinedTextField(if (mode == BookGoalMode.DAILY_PAGES) pages else amount,
-                            onValueChange = { text -> val clean = text.filter(Char::isDigit).take(if (mode == BookGoalMode.DAILY_PAGES) 6 else 3)
-                                if (mode == BookGoalMode.DAILY_PAGES) pages = clean else { amount = clean; deadlineEdited = true } },
-                            label = { Text(if (mode == BookGoalMode.DAILY_PAGES) "Pages per day" else unit) },
+                        if (mode != BookGoalMode.DEADLINE) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(BookGoalMode.DAILY_PAGES to "Pages", BookGoalMode.DAILY_MINUTES to "Minutes").forEach { (option, label) ->
+                                FilterChip(mode == option, onClick = { modeName = option.name }, label = { Text(label) }, shape = shape, modifier = Modifier.weight(1f))
+                            }
+                        }
+                        OutlinedTextField(when (mode) { BookGoalMode.DAILY_PAGES -> pages; BookGoalMode.DAILY_MINUTES -> minutes; else -> amount },
+                            onValueChange = { text -> val clean = text.filter(Char::isDigit).take(if (mode == BookGoalMode.DEADLINE) 3 else 6)
+                                when (mode) { BookGoalMode.DAILY_PAGES -> pages = clean; BookGoalMode.DAILY_MINUTES -> minutes = clean
+                                    else -> { amount = clean; deadlineEdited = true } } },
+                            label = { Text(when (mode) { BookGoalMode.DAILY_PAGES -> "Pages per day"; BookGoalMode.DAILY_MINUTES -> "Minutes per day"; else -> unit }) },
                             shape = shape, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
                         if (mode == BookGoalMode.DEADLINE) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf("Days", "Weeks", "Months").forEach { option ->
                                 FilterChip(unit == option, onClick = { unit = option; deadlineEdited = true }, label = { Text(option) }, shape = shape, modifier = Modifier.weight(1f))
                             }
                         }
-                        if (book.pageCount <= 0) Text("Add the book's total pages to set a goal.", color = colors.onSurfaceVariant)
-                        else if (book.status == BookStatus.FINISHED || book.currentPage >= book.pageCount) Text("Book completed", color = colors.primary)
+                        if (book.pageCount <= 0 && mode != BookGoalMode.DAILY_MINUTES) Text("Add the book's total pages to set a goal.", color = colors.onSurfaceVariant)
+                        else if (book.status == BookStatus.FINISHED || (book.pageCount > 0 && book.currentPage >= book.pageCount)) Text("Book completed", color = colors.primary)
                         if (progress != null) {
                             HorizontalDivider(color = colors.outlineVariant)
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Today", color = colors.onSurfaceVariant)
-                                Text("${progress.todayPages} / ${progress.todayTarget} pages", fontWeight = FontWeight.SemiBold)
+                                Text(progress.todayProgressLabel, fontWeight = FontWeight.SemiBold)
                             }
                             LinearProgressIndicator(progress = { progress.todayFraction }, modifier = Modifier.fillMaxWidth().clip(shape))
-                            BookGoalSummaryRow("Left today", "${progress.todayRemaining} pages" + progress.todaySeconds?.let { " · ~${bookFormatCompactHours(it)}" }.orEmpty())
-                            BookGoalSummaryRow("To finish", "${progress.remainingPages} pages · ${progress.daysRemaining} days")
+                            BookGoalSummaryRow("Left today", progress.todayRemainingLabel + (if (progress.timeBased) "" else progress.todaySeconds?.let { " · ~${bookFormatCompactHours(it)}" }.orEmpty()))
+                            BookGoalSummaryRow("To finish", if (progress.hasFinishEstimate) "${progress.remainingPages} pages · ${progress.daysRemaining} days" else "Not available yet")
                             BookGoalSummaryRow("Read time left", progress.remainingSeconds?.let { "~${bookFormatCompactHours(it)}" } ?: "Not available yet")
-                            BookGoalSummaryRow("Finish by", progress.expectedFinish.format(DateTimeFormatter.ofPattern("MMM d, yyyy")))
+                            if (progress.hasFinishEstimate) BookGoalSummaryRow("Finish by", progress.expectedFinish.format(DateTimeFormatter.ofPattern("MMM d, yyyy")))
                             if (progress.overdue) Text("Deadline passed. Today's target covers the remaining pages.", style = MaterialTheme.typography.labelSmall, color = colors.primary)
                             if (progress.pagesPerHour != null) Text(String.format(java.util.Locale.US, "%.1f pages/h · %s", progress.pagesPerHour,
                                 progress.paceSource.label), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)

@@ -15,14 +15,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 @Composable
-internal fun BookDisclosureHeader(title: String, icon: Int?, expanded: Boolean, count: String? = null, onClick: () -> Unit) {
+internal fun BookDisclosureHeader(title: String, icon: Int?, expanded: Boolean, count: String? = null, compact: Boolean = false, onClick: () -> Unit) {
     val rotation by animateFloatAsState(if (expanded) 90f else 0f, tween(160), label = "disclosure")
-    Row(Modifier.fillMaxWidth().fittedClickable(RoundedCornerShape(8.dp), onClick = onClick).padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (icon != null) Box(Modifier.size(38.dp).background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+    Row(Modifier.fillMaxWidth().fittedClickable(RoundedCornerShape(8.dp), onClick = onClick).padding(if (compact) 10.dp else 12.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 12.dp)) {
+        if (icon != null && compact) Icon(painterResource(icon), null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+        else if (icon != null) Box(Modifier.size(38.dp).background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
             Icon(painterResource(icon), null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
         }
-        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(title, Modifier.weight(1f), style = if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         if (count != null) Text(count, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Icon(painterResource(R.drawable.ic_chevron_right_24), if (expanded) "Collapse" else "Expand",
             tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(26.dp).rotate(rotation))

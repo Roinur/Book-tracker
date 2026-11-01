@@ -41,7 +41,7 @@ internal fun BookSessionEditDialog(
     session: BookReadingSessionRow,
     onDismiss: () -> Unit,
     onExcludedChange: (Boolean) -> Unit,
-    onSave: (String, String, String, Boolean) -> Unit,
+    onSave: (String, String, String, Boolean, String?) -> Unit,
     onDelete: () -> Unit
 ) {
     val excluded = session.excludeFromStatistics
@@ -49,7 +49,9 @@ internal fun BookSessionEditDialog(
     val context = LocalContext.current
     var endedDraft by remember(session.id) { mutableStateOf(bookFormatEditableDate(session.activityAt)) }
     var minutesDraft by remember(session.id) { mutableStateOf((session.durationSeconds / 60L).coerceAtLeast(1L).toString()) }
-    var pageReachedDraft by remember(session.id) { mutableStateOf(session.pageReached.toString()) }
+    var pageReachedDraft by rememberSaveable(session.id) { mutableStateOf(session.pageReached.toString()) }
+    var bookmarkEnabled by rememberSaveable(session.id) { mutableStateOf(session.bookmarkPage != null) }
+    var bookmarkText by rememberSaveable(session.id) { mutableStateOf(session.bookmarkPage?.toString().orEmpty()) }
     var showDeleteConfirm by rememberSaveable(session.id) { mutableStateOf(false) }
     var durationPickerOpen by remember { mutableStateOf(false) }
     fun showDateTimePicker() {
@@ -110,11 +112,12 @@ internal fun BookSessionEditDialog(
             OutlinedTextField(
                 value = pageReachedDraft,
                 onValueChange = { pageReachedDraft = it.filter(Char::isDigit).take(6) },
-                label = { Text("Page reached") },
+                label = { Text("Total pages read at this session") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth()
             )
+            BookBookmarkField(bookmarkEnabled, bookmarkText, { bookmarkEnabled = it }, { bookmarkText = it })
             Row(Modifier.fillMaxWidth().fittedClickable(RoundedCornerShape(8.dp)) { onExcludedChange(!excluded) }, verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = excluded, onCheckedChange = null)
                 Column(Modifier.weight(1f).padding(start = 8.dp)) {
@@ -128,7 +131,7 @@ internal fun BookSessionEditDialog(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = onDismiss) { Text("Cancel") }
-                    Button(onClick = { onSave(endedDraft, minutesDraft, pageReachedDraft, excluded) }) {
+                    Button(enabled = !bookmarkEnabled || bookmarkText.toIntOrNull() != null, onClick = { onSave(endedDraft, minutesDraft, pageReachedDraft, excluded, if (bookmarkEnabled) bookmarkText else null) }) {
                         Text("Save")
                     }
                 }

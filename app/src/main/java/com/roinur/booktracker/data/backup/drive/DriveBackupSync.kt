@@ -63,7 +63,7 @@ internal object DriveBackupSync {
         val request = AuthorizationRequest.builder().setAccount(Account(account, "com.google"))
             .setRequestedScopes(listOf(Scope(GoogleDriveTransport.SCOPE))).build()
         val result = Tasks.await(Identity.getAuthorizationClient(context).authorize(request), 40, TimeUnit.SECONDS)
-        check(!result.hasResolution()) { "Open Settings → Google Drive and reconnect to renew permission." }
+        check(!result.hasResolution()) { "Open Settings → Google Drive backup and reconnect to renew permission." }
         return requireNotNull(result.accessToken?.takeIf(String::isNotBlank)) { "Google did not grant Drive access." }
     }
 

@@ -31,6 +31,53 @@ import java.time.format.DateTimeFormatter
 
 class BookTrackerViewModel(application: Application) : AndroidViewModel(application) {
     private val db = BookTrackerDatabase(application)
+    internal var pendingCompletionRatings by mutableStateOf<List<Int>>(emptyList())
+        private set
+    internal val completionRatingBook: BookRow?
+        get() = pendingCompletionRatings.firstNotNullOfOrNull { id ->
+            statsBooks.firstOrNull { it.id == id && it.status == BookStatus.FINISHED && it.rating <= 0 }
+        }
+
+    internal fun dismissCompletionRating(bookId: Int) {
+        pendingCompletionRatings = pendingCompletionRatings.filterNot { it == bookId }
+    }
+
+    internal fun saveCompletionRating(bookId: Int, rating: Int, onSaved: (Boolean) -> Unit) {
+        if (rating !in 1..5) { onSaved(false); return }
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { db.rateFinishedBookIfUnrated(bookId, rating) } }
+            if (result.isSuccess) {
+                dismissCompletionRating(bookId)
+                reload()
+                if (result.getOrDefault(false)) maybeAutoBackup()
+            } else statusMessage = "Could not save the rating. Please try again."
+            onSaved(result.isSuccess)
+        }
+    }
+    private val bookListListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "last_success") viewModelScope.launch {
+            reload()
+            com.roinur.booktracker.data.backup.drive.DriveBackupSync.enqueue(getApplication())
+        }
+    }
+    internal var libraryCheckOpen by mutableStateOf(false)
+        private set
+    internal fun openLibraryCheck() { libraryCheckOpen = true }
+    internal fun closeLibraryCheck() { libraryCheckOpen = false }
+
+    internal fun saveLibraryCheck(fix: BookLibraryFix, makeRecovery: Boolean, onSaved: (String?) -> Unit) {
+        viewModelScope.launch {
+            if (fix.status != null && activeBookId == fix.bookId) {
+                onSaved("Finish the active session before changing its status."); return@launch
+            }
+            if (makeRecovery && !checkpoint("before library check")) { onSaved(statusMessage); return@launch }
+            val result = withContext(Dispatchers.IO) { runCatching {
+                com.roinur.booktracker.data.database.BookLibraryCheckRepository(db).apply(fix)
+            } }
+            if (result.isSuccess) { reload(); maybeAutoBackup(); onSaved(null) }
+            else onSaved(result.exceptionOrNull()?.message ?: "Could not save changes.")
+        }
+    }
     private val bookGoalRepository = com.roinur.booktracker.data.database.BookGoalRepository(db)
     internal var bookGoals by mutableStateOf<Map<Int, BookGoal>>(emptyMap())
         private set
@@ -160,6 +207,78 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
     private var retainedCoverUrls: Set<String>? = null
     private val prefs = application.getSharedPreferences(BOOK_TRACKER_PREFS, Context.MODE_PRIVATE)
 
+    private val readingPlanRepository = com.roinur.booktracker.data.database.BookReadingPlanRepository(db)
+    private val readingPlanWrites = kotlinx.coroutines.sync.Mutex()
+    private var readingPlanBackupJob: Job? = null
+    internal var readingPlans by mutableStateOf<List<BookReadingPlan>>(readingPlanRepository.list())
+        private set
+    internal var readingPlanError by mutableStateOf("")
+        private set
+    internal var readingPlanBusy by mutableStateOf(false)
+        private set
+
+    internal fun saveReadingPlan(plan: BookReadingPlan) {
+        val previous = readingPlans
+        readingPlans = if (previous.any { it.id == plan.id }) previous.map { if (it.id == plan.id) plan else it } else previous + plan
+        readingPlanError = ""
+        viewModelScope.launch {
+            readingPlanWrites.lock()
+            try {
+                withContext(Dispatchers.IO) { readingPlanRepository.save(plan) }
+                readingPlanBackupJob?.cancel()
+                readingPlanBackupJob = viewModelScope.launch { delay(1500); maybeAutoBackup() }
+            } catch (error: Exception) {
+                readingPlanError = "Could not save plan: ${error.message}"
+                if (readingPlans.firstOrNull { it.id == plan.id } == plan) readingPlans = previous
+            } finally { readingPlanWrites.unlock() }
+        }
+    }
+
+    internal fun applyReadingPlan(id: String, onApplied: () -> Unit) {
+        if (readingPlanBusy) return
+        readingPlanBusy = true
+        viewModelScope.launch {
+            readingPlanWrites.lock()
+            try {
+                withContext(Dispatchers.IO) { readingPlanRepository.activate(id) }
+                readingPlans = readingPlans.map { it.copy(active = it.id == id) }
+                libraryFilter = BookLibraryFilter.PLAN
+                prefs.edit().putString(KEY_BOOK_LIBRARY_FILTER, libraryFilter.name).apply()
+                libraryCollection = ""; libraryMissingType = null
+                updateSearch("")
+                maybeAutoBackup()
+                onApplied()
+            } catch (error: Exception) { readingPlanError = "Could not apply plan: ${error.message}" }
+            finally { readingPlanWrites.unlock(); readingPlanBusy = false }
+        }
+    }
+
+    internal fun deleteReadingPlan(id: String) {
+        if (readingPlanBusy) return
+        readingPlanBusy = true
+        viewModelScope.launch {
+            readingPlanWrites.lock()
+            try {
+                if (!checkpoint("before deleting reading plan")) { readingPlanError = statusMessage; return@launch }
+                withContext(Dispatchers.IO) { readingPlanRepository.delete(id) }
+                val wasActive = readingPlans.any { it.id == id && it.active }
+                readingPlans = readingPlans.filterNot { it.id == id }
+                if (wasActive && libraryFilter == BookLibraryFilter.PLAN) {
+                    libraryFilter = BookLibraryFilter.ALL
+                    prefs.edit().putString(KEY_BOOK_LIBRARY_FILTER, libraryFilter.name).apply()
+                }
+                maybeAutoBackup()
+            } catch (error: Exception) { readingPlanError = "Could not delete plan: ${error.message}" }
+            finally { readingPlanWrites.unlock(); readingPlanBusy = false }
+        }
+    }
+
+    internal fun visiblePlanBooks(): List<BookRow> {
+        val candidates = books.filter { matchesCollectionFilter(it) }
+        return if (libraryFilter == BookLibraryFilter.PLAN && searchInput.isBlank()) readingPlans.firstOrNull { it.active }?.orderedBooks(candidates).orEmpty()
+        else candidates.filter { libraryFilter.matches(it, activeBookId) }
+    }
+
     var themeMode by mutableStateOf(loadThemeMode())
         private set
     var extraDark by mutableStateOf(prefs.getBoolean("extra_dark", false))
@@ -189,6 +308,12 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
     internal var draftParts by mutableStateOf<List<BookPart>>(emptyList())
         private set
     internal fun updateDraftParts(parts: List<BookPart>) { draftParts = validateBookParts(parts, pageCountInput.toIntOrNull() ?: 0) }
+    internal var draftOwnership by mutableStateOf("Unknown")
+    internal var draftReadingPriority by mutableStateOf(0)
+    internal fun updateDraftBookList(ownership: String, priority: Int) {
+        require(ownership in listOf("Unknown", "Owned", "Not owned") && priority in 0..10)
+        draftOwnership = ownership; draftReadingPriority = priority
+    }
     var searchInput by mutableStateOf("")
         private set
     var statusMessage by mutableStateOf("Ready.")
@@ -276,12 +401,18 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
     private var backupPending = false
 
     init {
+        application.getSharedPreferences("book_list_sync", Context.MODE_PRIVATE).registerOnSharedPreferenceChangeListener(bookListListener)
         com.roinur.booktracker.data.backup.drive.DriveBackupSync.syncSchedule(application)
+        com.roinur.booktracker.data.booklist.BookListSync.schedule(application)
+        com.roinur.booktracker.data.markdown.BookMarkdownSync.schedule(application)
         reload()
     }
 
     fun reload() {
-        statsBooks = db.listBooks("", BookSortField.ADDED, false)
+        readingPlans = readingPlanRepository.list()
+        val refreshedBooks = db.listBooks("", BookSortField.ADDED, false)
+        pendingCompletionRatings = bookCompletionRatingQueue(statsBooks, refreshedBooks, pendingCompletionRatings)
+        statsBooks = refreshedBooks
         val allCoverUrls = statsBooks.flatMap { book -> listOf(book.coverUrl) + book.parts.map { it.coverUrl } }.filter { it.isNotBlank() }.toSet()
         val coverUrls = allCoverUrls.filter { it.startsWith("http://") || it.startsWith("https://") }.toSet()
         if (retainedCoverUrls != allCoverUrls) {
@@ -689,6 +820,8 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         draftSourceUrl = book.sourceUrl
         collectionsInput = book.collections
         draftParts = book.parts
+        draftOwnership = book.ownership
+        draftReadingPriority = book.readingPriority
         statusMessage = "Editing ${book.title}."
     }
 
@@ -740,7 +873,9 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
             coverUrl = draftCoverUrl,
             sourceUrl = draftSourceUrl,
             collections = normalizeBookCollections(collectionsInput),
-            parts = draftParts.takeIf { editingBookId != null || it.isNotEmpty() }
+            parts = draftParts.takeIf { editingBookId != null || it.isNotEmpty() },
+            ownership = draftOwnership,
+            readingPriority = draftReadingPriority
         )
         try { validateBookParts(draftParts, seed.pageCount) } catch (error: IllegalArgumentException) {
             statusMessage = error.message ?: "Check the book parts."; return
@@ -782,26 +917,25 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         return true
     }
 
-    fun finishReading(bookId: Int, pageText: String): Boolean {
-        val page = pageText.toIntOrNull()
-        if (page == null) {
-            statusMessage = "Enter the page you reached."
-            return false
-        }
+    fun finishReading(bookId: Int, reachedText: String, bookmarkText: String?, calculatedPagesRead: Int? = null): Boolean {
         val book = statsBooks.firstOrNull { it.id == bookId } ?: run {
             statusMessage = "Could not find the active book. Session is still running."
             return false
         }
         // Keep the actual pages read even when the catalog page count is inaccurate.
-        val safePage = page.coerceAtLeast(0)
-        val pagesDelta = (safePage - book.currentPage).coerceAtLeast(0)
+        val entry = bookFinishReadingEntry(book, reachedText, bookmarkText, calculatedPagesRead) ?: run {
+            statusMessage = "Enter a valid page reached and bookmark page."
+            return false
+        }
+        val safePage = entry.bookmarkPage ?: entry.totalPagesRead
+        val pagesDelta = entry.pagesRead
         val startedMs = activeStartedAtMs.takeIf { it > 0L } ?: System.currentTimeMillis()
         val endedMs = System.currentTimeMillis()
         val elapsed = activeReadingElapsedSeconds(endedMs).coerceAtLeast(1L)
         val started = Instant.ofEpochMilli(startedMs).toString()
         val ended = Instant.ofEpochMilli(endedMs).toString()
         val saved = runCatching {
-                db.addReadingSession(bookId, started, ended, elapsed, pagesRead = pagesDelta, pageReached = safePage)
+                db.addReadingSession(bookId, started, ended, elapsed, pagesRead = pagesDelta, pageReached = entry.totalPagesRead, bookmarkPage = entry.bookmarkPage, updateBookmark = true)
         }
         if (saved.isFailure) {
             statusMessage = "Could not save the session. It is still running: ${saved.exceptionOrNull()?.message ?: "database error"}."
@@ -927,12 +1061,14 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         bookId: Int,
         endedText: String,
         minutesText: String,
-        pageReachedText: String
+        pageReachedText: String,
+        bookmarkText: String?
     ) {
         val minutes = minutesText.toLongOrNull()?.coerceAtLeast(1L)
-        val pageReached = pageReachedText.toIntOrNull()?.coerceAtLeast(0)
-        if (minutes == null || pageReached == null) {
-            statusMessage = "Enter valid session time and page reached."
+        val book = statsBooks.firstOrNull { it.id == bookId } ?: return
+        val entry = bookReadingEntry(book, pageReachedText, bookmarkText)
+        if (minutes == null || entry == null) {
+            statusMessage = "Enter valid session time, pages read and bookmark."
             return
         }
         val ended = parseBookSessionEditDate(endedText) ?: run {
@@ -943,18 +1079,15 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch {
             if (!checkpoint("before-session-edit")) return@launch
             withContext(Dispatchers.IO) {
-                val pagesRead = db.inferPagesRead(
-                    bookId = bookId,
-                    endedIso = ended.toString(),
-                    pageReached = pageReached
-                )
+                val pagesRead = entry.pagesRead
                 db.addReadingSession(
                     bookId = bookId,
                     startedIso = started.toString(),
                     endedIso = ended.toString(),
                     durationSeconds = minutes * 60L,
                     pagesRead = pagesRead,
-                    pageReached = pageReached
+                    pageReached = entry.totalPagesRead,
+                    bookmarkPage = entry.bookmarkPage, updateBookmark = true
                 )
             }
             statusMessage = "Reading session added."
@@ -979,12 +1112,14 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         endedText: String,
         minutesText: String,
         pageReachedText: String,
-        excludeFromStatistics: Boolean
+        excludeFromStatistics: Boolean,
+        bookmarkText: String?
     ) {
         val minutes = minutesText.toLongOrNull()?.coerceAtLeast(1L)
-        val pageReached = pageReachedText.toIntOrNull()?.coerceAtLeast(0)
-        if (minutes == null || pageReached == null) {
-            statusMessage = "Enter valid session time and page reached."
+        val pageReached = pageReachedText.toIntOrNull()?.takeIf { it >= 0 }
+        val bookmarkPage = bookmarkText?.toIntOrNull()?.takeIf { it >= 0 }
+        if (minutes == null || pageReached == null || (bookmarkText != null && bookmarkPage == null)) {
+            statusMessage = "Enter valid session time, pages and bookmark."
             return
         }
         val ended = parseBookSessionEditDate(endedText)
@@ -996,7 +1131,7 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch {
             if (!checkpoint("before-session-edit")) return@launch
             withContext(Dispatchers.IO) {
-                if (endedText == bookFormatEditableDate(session.activityAt) && minutesText == (session.durationSeconds / 60L).coerceAtLeast(1L).toString() && pageReached == session.pageReached) {
+                if (endedText == bookFormatEditableDate(session.activityAt) && minutesText == (session.durationSeconds / 60L).coerceAtLeast(1L).toString() && pageReached == session.pageReached && bookmarkPage == session.bookmarkPage) {
                     db.setSessionStatisticsExcluded(session.id, excludeFromStatistics)
                     return@withContext
                 }
@@ -1015,7 +1150,8 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
                     pagesRead = pagesRead,
                     pageReached = pageReached,
                     excludeFromStatistics = excludeFromStatistics,
-                    preserveProgress = pageReached == session.pageReached
+                    preserveProgress = pageReached == session.pageReached,
+                    bookmarkPage = bookmarkPage, updateBookmark = true
                 )
             }
             statusMessage = "Reading session updated."
@@ -1515,7 +1651,9 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private fun maybeAutoBackup() {
+        com.roinur.booktracker.data.markdown.BookMarkdownSync.enqueue(getApplication())
         com.roinur.booktracker.data.backup.drive.DriveBackupSync.enqueue(getApplication())
+        com.roinur.booktracker.data.booklist.BookListSync.enqueue(getApplication())
         if (bookAutoBackupEnabled && bookAutoBackupTreeUri.isNotBlank()) {
             if (backupBusy) backupPending = true else backupNow()
         }
@@ -1548,6 +1686,8 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
         draftSourceUrl = ""
         collectionsInput = ""
         draftParts = emptyList()
+        draftOwnership = "Unknown"
+        draftReadingPriority = 0
     }
 
     private fun clearActiveBook() {
@@ -1611,7 +1751,7 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
             .putLong(KEY_BOOK_ACTIVE_PAUSED_TOTAL_MS, activePausedTotalMs)
             .putString(KEY_BOOK_ACTIVE_TITLE, book?.title.orEmpty())
             .putString(KEY_BOOK_ACTIVE_AUTHORS, book?.authors.orEmpty())
-            .putInt(KEY_BOOK_ACTIVE_PAGE, book?.currentPage ?: 0)
+            .putInt(KEY_BOOK_ACTIVE_PAGE, book?.readingPage ?: 0)
             .putInt(KEY_BOOK_ACTIVE_PAGE_COUNT, book?.pageCount ?: 0)
             .commit()
     }
@@ -1629,6 +1769,7 @@ class BookTrackerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     override fun onCleared() {
+        getApplication<Application>().getSharedPreferences("book_list_sync", Context.MODE_PRIVATE).unregisterOnSharedPreferenceChangeListener(bookListListener)
         db.close()
         super.onCleared()
     }

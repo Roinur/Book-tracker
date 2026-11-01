@@ -8,22 +8,24 @@ An Android reading journal for books, reading plans, sessions, notes and persona
 
 ## Screenshots
 
-<img src="docs/screenshots/settings-1.2.png" width="320" alt="Book Tracker 1.2 Settings categories"> <img src="docs/screenshots/about-1.2.png" width="320" alt="Book Tracker 1.2 version and build">
+Book Tracker 1.2 on a real device, with the maintainer's own library and reading history.
 
 <table>
-<tr><th>Stats</th><th>Library</th></tr>
-<tr><td><img src="docs/screenshots/stats.png" width="320" alt="Stats"></td><td><img src="docs/screenshots/library.png" width="320" alt="Library"></td></tr>
-<tr><th>Book details</th><th>Edit book</th></tr>
-<tr><td><img src="docs/screenshots/book-details.png" width="320" alt="Book details"></td><td><img src="docs/screenshots/edit-book.png" width="320" alt="Edit book"></td></tr>
+<tr><th>Library</th><th>Gallery</th></tr>
+<tr><td><img src="docs/screenshots/library.png" width="320" alt="Library list with current books and reading progress"></td><td><img src="docs/screenshots/library-gallery.png" width="320" alt="Gallery of current books with covers"></td></tr>
+<tr><th>Stats</th><th>Reading recap</th></tr>
+<tr><td><img src="docs/screenshots/stats.png" width="320" alt="October 2026 reading statistics and heatmap"></td><td><img src="docs/screenshots/reading-recap.png" width="320" alt="October reading recap with totals, records and finished books"></td></tr>
+<tr><th>Reading plans</th><th>Yearly reading list export</th></tr>
+<tr><td><img src="docs/screenshots/reading-plans.png" width="320" alt="2026 reading plan with priority tiers and remaining reading estimates"></td><td><img src="docs/screenshots/reading-list-export.png" width="320" alt="Image export preview of the library grouped by reading year"></td></tr>
+<tr><th>Book details</th><th>Reading map</th></tr>
+<tr><td><img src="docs/screenshots/book-details.png" width="320" alt="Book details with progress, reading goal, pace and session history"></td><td><img src="docs/screenshots/reading-map.png" width="320" alt="Reading map connecting 147 books across 17 collection families"></td></tr>
 <tr><th>Reading goals</th><th>Reading progress</th></tr>
-<tr><td><img src="docs/screenshots/reading-goals.png" width="320" alt="Reading goals"></td><td><img src="docs/screenshots/reading-progress.png" width="320" alt="Reading progress"></td></tr>
+<tr><td><img src="docs/screenshots/reading-goals.png" width="320" alt="Daily, monthly and yearly reading goals"></td><td><img src="docs/screenshots/reading-progress.png" width="320" alt="Monthly reading progress and completed compendium parts"></td></tr>
 <tr><th>Author trends</th><th>Collection trends</th></tr>
 <tr><td><img src="docs/screenshots/trends-authors.png" width="320" alt="Author trends"></td><td><img src="docs/screenshots/trends-collections.png" width="320" alt="Collection trends"></td></tr>
-<tr><th>Contents scanning</th><th>Google Drive backup</th></tr>
-<tr><td><img src="docs/screenshots/contents-scanning.png" width="320" alt="Review scanned compendium titles and page numbers"></td><td><img src="docs/screenshots/drive-backup.png" width="320" alt="Optional Google Drive backup controls"></td></tr>
+<tr><th>Settings</th><th>About</th></tr>
+<tr><td><img src="docs/screenshots/settings-1.2.png" width="320" alt="Book Tracker 1.2 Settings categories"></td><td><img src="docs/screenshots/about-1.2.png" width="320" alt="Book Tracker 1.2 version and build"></td></tr>
 </table>
-
-<img src="docs/screenshots/reading.png" width="320" alt="Active reading session">
 
 ## Features
 
